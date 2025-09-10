@@ -196,25 +196,27 @@ async def harem_callback(client, callback_query):
         print(f"Error in callback: {e}")
 
 
+# --- Rarity Map (safe keys + full display value) ---
 rarity_map = {
-    1: "⚪️ Low",
-    2: "🟠 Medium",
-    3: "🔴 High",
-    4: "🎩 Special Edition",
-    5: "🪽 Elite Edition",
-    6: "🪐 Exclusive",
-    7: "💞 Valentine",
-    8: "🎃 Halloween",
-    9: "❄️ Winter",
-    10: "🏖 Summer",
-    11: "🎗 Royal",
-    12: "💸 Luxury Edition",
-    13: "🍃 echhi",
-    14: "🌧️ Rainy Edition",
-    15: "🎍 Festival"
+    "low": "⚪️ Low",
+    "medium": "🟠 Medium",
+    "high": "🔴 High",
+    "special": "🎩 Special Edition",
+    "elite": "🪽 Elite Edition",
+    "exclusive": "🪐 Exclusive",
+    "valentine": "💞 Valentine",
+    "halloween": "🎃 Halloween",
+    "winter": "❄️ Winter",
+    "summer": "🏖 Summer",
+    "royal": "🎗 Royal",
+    "luxury": "💸 Luxury Edition",
+    "echhi": "🍃 echhi",
+    "rainy": "🌧️ Rainy Edition",
+    "festival": "🎍 Festival"
 }
 
 
+# --- /hmode command handler ---
 @app.on_message(filters.command("hmode"))
 async def hmode_handler(client, message):
     user_id = message.from_user.id
@@ -224,10 +226,9 @@ async def hmode_handler(client, message):
     if len(args) > 1:
         rarity_input = args[1].strip().lower()
 
-        rarity_lookup = {v.lower(): v for v in rarity_map.values()}
-
-        if rarity_input in rarity_lookup:
-            rarity_value = rarity_lookup[rarity_input]
+        # direct key check
+        if rarity_input in rarity_map:
+            rarity_value = rarity_map[rarity_input]
             await user_collection.update_one(
                 {"id": user_id},
                 {"$set": {"filter_rarity": rarity_value}},
@@ -243,6 +244,7 @@ async def hmode_handler(client, message):
             await confirm.delete()
             return
 
+        # clear filter
         elif rarity_input in ["all", "none"]:
             await user_collection.update_one(
                 {"id": user_id},
@@ -259,7 +261,7 @@ async def hmode_handler(client, message):
             return
 
         else:
-            available = ", ".join(rarity_map.values())
+            available = ", ".join(v for v in rarity_map.values())
             await message.reply_text(
                 f"❌ Invalid rarity: <b>{args[1]}</b>\n\n"
                 f"Available: {available}, All",
@@ -267,13 +269,13 @@ async def hmode_handler(client, message):
             )
             return
 
-    # --- Case 2: No rarity typed, show buttons ---
+    # --- Case 2: No rarity typed, show inline buttons ---
     keyboard, row = [], []
-    for i, value in enumerate(rarity_map.values(), 1):
+    for i, (key, value) in enumerate(rarity_map.items(), 1):
         row.append(
             InlineKeyboardButton(
-                value,
-                callback_data=f"set_rarity:{user_id}:{value}"  # 👈 user_id lock
+                value,  # Button text
+                callback_data=f"set_rarity:{user_id}:{key}"  # safe key only
             )
         )
         if i % 2 == 0:
@@ -293,19 +295,20 @@ async def hmode_handler(client, message):
     )
 
 
+# --- Callback handler for rarity buttons ---
 @app.on_callback_query(filters.regex(r"^set_rarity:"))
 async def set_rarity_callback(client, callback_query):
     try:
-        _, owner_id, rarity_value = callback_query.data.split(':')
+        _, owner_id, rarity_key = callback_query.data.split(':')
         owner_id = int(owner_id)
 
-        # ✅ Security check: only owner can press
+        # ✅ Security check
         if callback_query.from_user.id != owner_id:
             await callback_query.answer("⚠️ Not your menu!", show_alert=True)
             return
 
         user_id = callback_query.from_user.id
-        rarity_value = None if rarity_value == "None" else rarity_value
+        rarity_value = None if rarity_key == "None" else rarity_map.get(rarity_key)
 
         await user_collection.update_one(
             {"id": user_id},
@@ -332,3 +335,4 @@ async def set_rarity_callback(client, callback_query):
     except Exception as e:
         print(f"Error in set_rarity callback: {e}")
         await callback_query.answer("❌ Error setting rarity filter", show_alert=True)
+        
