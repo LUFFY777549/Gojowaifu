@@ -87,6 +87,7 @@ async def start_mines(client, message):
 # --- Tile click handler ---
 @bot.on_callback_query(filters.regex(r"^mines_tile:"))
 async def tap_tile(client, cq):
+    await cq.answer()  # ensure button press always responds
     try:
         _, user_id_str, pos_str = cq.data.split(":")
         user_id = int(user_id_str)
@@ -149,7 +150,6 @@ async def tap_tile(client, cq):
         f"🎮 Mines Game\nBet: {game['bet']}\nBombs: {game['bombs']}\nMultiplier: {game['multiplier']:.2f}x\nPotential Win: {potential_win}",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-    await cq.answer("Tile opened ✅")
 
 # --- Cashout handler ---
 @bot.on_callback_query(filters.regex(r"^mines_cashout:"))
@@ -182,23 +182,21 @@ async def cashout(client, cq):
             else:
                 row.append(InlineKeyboardButton("❎", callback_data="mines_ignore"))
         keyboard.append(row)
-    keyboard.append([InlineKeyboardButton("❌ Close", callback_data=f"mines_close:{user_id}")])
 
-    await cq.message.edit_text(
+    msg = await cq.message.edit_text(
         f"✅ Cashed out!\nWon: {earned} coins\nMultiplier: {game['multiplier']:.2f}x\nBalance: {new_balance}",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
+    # Auto delete after 5 seconds
+    await asyncio.sleep(5)
+    try:
+        await msg.delete()
+    except:
+        pass
 
 # --- Ignore button handler ---
 @bot.on_callback_query(filters.regex("^mines_ignore$"))
 async def ignore_button(client, cq):
     await cq.answer()
-
-# --- Close button handler ---
-@bot.on_callback_query(filters.regex(r"^mines_close:"))
-async def close_game(client, cq):
-    await cq.answer()
-    try:
-        await cq.message.delete()
-    except Exception:
-        pass
+    
