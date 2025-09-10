@@ -299,13 +299,14 @@ async def hmode_handler(client, message):
 @app.on_callback_query(filters.regex(r"^set_rarity:"))
 async def set_rarity_callback(client, callback_query):
     try:
+        await callback_query.answer()  # ✅ Always respond fast to button press
+
         _, owner_id, rarity_key = callback_query.data.split(':')
         owner_id = int(owner_id)
 
         # ✅ Security check
         if callback_query.from_user.id != owner_id:
-            await callback_query.answer("⚠️ Not your menu!", show_alert=True)
-            return
+            return await callback_query.answer("⚠️ Not your menu!", show_alert=True)
 
         user_id = callback_query.from_user.id
         rarity_value = None if rarity_key == "None" else rarity_map.get(rarity_key)
@@ -316,20 +317,24 @@ async def set_rarity_callback(client, callback_query):
             upsert=True
         )
 
+        # Update the text after setting filter
         if rarity_value:
-            await callback_query.message.edit_text(
+            new_text = (
                 f"✅ Rarity filter set to: <b>{rarity_value}</b>\n\n"
-                "Open your collection with /harem to see filtered results.",
-                parse_mode=enums.ParseMode.HTML,
-                reply_markup=callback_query.message.reply_markup
+                "Open your collection with /harem to see filtered results."
             )
         else:
-            await callback_query.message.edit_text(
+            new_text = (
                 "✅ Rarity filter cleared. Showing all rarities.\n\n"
-                "Open your collection with /harem to see filtered results.",
-                reply_markup=callback_query.message.reply_markup
+                "Open your collection with /harem to see filtered results."
             )
 
+        await callback_query.message.edit_text(
+            new_text,
+            parse_mode=enums.ParseMode.HTML
+        )
+
+        # 🎉 Pop-up confirm
         await callback_query.answer("🎉 Your rarity set successfully!", show_alert=False)
 
     except Exception as e:
