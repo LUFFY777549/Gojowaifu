@@ -7,27 +7,27 @@ from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton 
 from TEAMZYRO import ZYRO as bot, user_collection
 
-----------------------------
+# ----------------------------
 
 Small-caps-ish formatter
 
-----------------------------
+# ----------------------------
 
 def tiny(text: str) -> str: """Return a styled message. Using UPPERCASE to approximate tiny-caps. Telegram doesn't support true tiny-caps reliably; uppercase gives the consistent "professional" look requested and works in pop-up alerts. """ try: return str(text).upper() except: return text
 
-----------------------------
+# ----------------------------
 
 In-memory caches
 
-----------------------------
+# ----------------------------
 
 active_games = {}       # single-player games keyed by user_id pending_challenges = {} # pending challenges keyed by challenge_id active_mgames = {}      # active multiplayer games keyed by cid
 
-----------------------------
+# ----------------------------
 
 DB helpers (single-player persistence)
 
-----------------------------
+# ----------------------------
 
 async def save_game(user_id, game): await user_collection.update_one({"id": user_id}, {"$set": {"active_game": game}}, upsert=True) active_games[user_id] = game
 
@@ -35,19 +35,19 @@ async def load_game(user_id): if user_id in active_games: return active_games[us
 
 async def delete_game(user_id): active_games.pop(user_id, None) await user_collection.update_one({"id": user_id}, {"$unset": {"active_game": ""}})
 
-----------------------------
+# ----------------------------
 
 Utilities for board generation
 
-----------------------------
+# ----------------------------
 
 def gen_mines(total_cells: int, mines_count: int): return random.sample(range(total_cells), mines_count)
 
-----------------------------
+# ----------------------------
 
 SINGLE PLAYER (/mines)
 
-----------------------------
+# ----------------------------
 
 @bot.on_message(filters.command("mines")) async def start_mines(client, message): user_id = message.from_user.id args = message.text.split()
 
@@ -194,11 +194,11 @@ except:
 
 @bot.on_callback_query(filters.regex(r"^s:ign$")) async def single_ignore(client, cq): await cq.answer()
 
-----------------------------
+# ----------------------------
 
 MULTIPLAYER CHALLENGE (/mgame)
 
-----------------------------
+# ----------------------------
 
 @bot.on_message(filters.command("mgame")) async def mgame_challenge(client, message): """Usage: /mgame [bet] [@username or reply-to user] Creates a short challenge token and sends accept/decline buttons to target. """ challenger = message.from_user args = message.text.split() if len(args) < 2 and not message.reply_to_message: return await message.reply(tiny("USAGE: /MGAME [BET] [@USER OR REPLY]"))
 
