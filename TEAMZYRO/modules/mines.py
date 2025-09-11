@@ -13,7 +13,17 @@ from TEAMZYRO import ZYRO as bot, user_collection
 
 # ----------------------------
 
-def tiny(text: str) -> str: """Return a styled message. Using UPPERCASE to approximate tiny-caps. Telegram doesn't support true tiny-caps reliably; uppercase gives the consistent "professional" look requested and works in pop-up alerts. """ try: return str(text).upper() except: return text
+def tiny(text: str) -> str:
+    """Return a styled message. 
+    Using UPPERCASE to approximate tiny-caps.
+    Telegram doesn't support true tiny-caps reliably;
+    uppercase gives the consistent "professional" look requested
+    and works in pop-up alerts.
+    """
+    try:
+        return str(text).upper()
+    except:
+        return text
 
 # ----------------------------
 
@@ -29,19 +39,31 @@ active_games = {}       # single-player games keyed by user_id pending_challenge
 
 # ----------------------------
 
-async def save_game(user_id, game): await user_collection.update_one({"id": user_id}, {"$set": {"active_game": game}}, upsert=True) active_games[user_id] = game
+async def save_game(user_id, game):
+    await user_collection.update_one({"id": user_id}, {"$set": {"active_game": game}}, upsert=True)
+    active_games[user_id] = game
 
-async def load_game(user_id): if user_id in active_games: return active_games[user_id] user = await user_collection.find_one({"id": user_id}) if user and "active_game" in user: active_games[user_id] = user["active_game"] return active_games[user_id] return None
+async def load_game(user_id):
+    if user_id in active_games:
+        return active_games[user_id]
+    user = await user_collection.find_one({"id": user_id})
+    if user and "active_game" in user:
+        active_games[user_id] = user["active_game"]
+        return active_games[user_id]
+    return None
 
-async def delete_game(user_id): active_games.pop(user_id, None) await user_collection.update_one({"id": user_id}, {"$unset": {"active_game": ""}})
-
+async def delete_game(user_id):
+    active_games.pop(user_id, None)
+    await user_collection.update_one({"id": user_id}, {"$unset": {"active_game": ""}})
+    
 # ----------------------------
 
 # Utilities for board generation
 
 # ----------------------------
 
-def gen_mines(total_cells: int, mines_count: int): return random.sample(range(total_cells), mines_count)
+def gen_mines(total_cells: int, mines_count: int):
+    return random.sample(range(total_cells), mines_count)
 
 # ----------------------------
 
