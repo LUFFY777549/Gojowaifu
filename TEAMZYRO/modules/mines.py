@@ -9,7 +9,7 @@ from TEAMZYRO import ZYRO as bot, user_collection
 
 # ----------------------------
 
-Small-caps-ish formatter
+# Small-caps-ish formatter
 
 # ----------------------------
 
@@ -17,7 +17,7 @@ def tiny(text: str) -> str: """Return a styled message. Using UPPERCASE to appro
 
 # ----------------------------
 
-In-memory caches
+# In-memory caches
 
 # ----------------------------
 
@@ -25,7 +25,7 @@ active_games = {}       # single-player games keyed by user_id pending_challenge
 
 # ----------------------------
 
-DB helpers (single-player persistence)
+# DB helpers (single-player persistence)
 
 # ----------------------------
 
@@ -37,7 +37,7 @@ async def delete_game(user_id): active_games.pop(user_id, None) await user_colle
 
 # ----------------------------
 
-Utilities for board generation
+# Utilities for board generation
 
 # ----------------------------
 
@@ -45,7 +45,7 @@ def gen_mines(total_cells: int, mines_count: int): return random.sample(range(to
 
 # ----------------------------
 
-SINGLE PLAYER (/mines)
+# SINGLE PLAYER (/mines)
 
 # ----------------------------
 
@@ -196,7 +196,7 @@ except:
 
 # ----------------------------
 
-MULTIPLAYER CHALLENGE (/mgame)
+# MULTIPLAYER CHALLENGE (/mgame)
 
 # ----------------------------
 
@@ -287,7 +287,7 @@ try:
 except:
     pass
 
-Size selection handler
+# Size selection handler
 
 @bot.on_callback_query(filters.regex(r"^mg:size:")) async def mg_size_select(client, cq): await cq.answer() try: ,,cid, size_str = cq.data.split(":") size = int(size_str) except: return await cq.answer(tiny("⚠ INVALID SELECTION"), show_alert=True)
 
@@ -364,7 +364,7 @@ try:
 except:
     pass
 
-Multiplayer tile press
+# Multiplayer tile press
 
 @bot.on_callback_query(filters.regex(r"^mp:[0-9a-f]+:\d+$")) async def mp_tile_press(client, cq): await cq.answer() try: _, cid, pos_str = cq.data.split(":") pos = int(pos_str) except: return await cq.answer(tiny("⚠ INVALID BUTTON"), show_alert=True)
 
