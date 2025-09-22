@@ -20,8 +20,8 @@ async def bonus_menu(_, message: t.Message):
     )
     await message.reply_text("✨ ʙᴏɴᴜꜱ ᴍᴇɴᴜ ✨\n\nChoose one of the options below:", reply_markup=keyboard)
 
-# Callback
-@bot.on_callback_query()
+# Callback only for bonus buttons
+@bot.on_callback_query(filters.regex("^(daily_claim|weekly_claim|close_bonus)$"))
 async def bonus_handler(_, query: t.CallbackQuery):
     user_id = query.from_user.id
     user = await user_collection.find_one({"id": user_id})
@@ -42,9 +42,11 @@ async def bonus_handler(_, query: t.CallbackQuery):
             remaining = timedelta(days=1) - (datetime.utcnow() - last_daily)
             hours, remainder = divmod(int(remaining.total_seconds()), 3600)
             minutes, seconds = divmod(remainder, 60)
-            return await query.answer(f"⏳ Already claimed! Next in {hours}h {minutes}m {seconds}s", show_alert=True)
+            return await query.answer(
+                f"⏳ Already claimed! Next in {hours}h {minutes}m {seconds}s",
+                show_alert=True
+            )
 
-        # increment balance like Mines
         await user_collection.update_one(
             {"id": user_id},
             {"$inc": {"balance": DAILY_COINS}, "$set": {"last_daily_claim": datetime.utcnow()}},
@@ -66,9 +68,11 @@ async def bonus_handler(_, query: t.CallbackQuery):
             days, remainder = divmod(int(remaining.total_seconds()), 86400)
             hours, remainder = divmod(remainder, 3600)
             minutes, seconds = divmod(remainder, 60)
-            return await query.answer(f"⏳ Already claimed! Next in {days}d {hours}h {minutes}m", show_alert=True)
+            return await query.answer(
+                f"⏳ Already claimed! Next in {days}d {hours}h {minutes}m",
+                show_alert=True
+            )
 
-        # increment balance like Mines
         await user_collection.update_one(
             {"id": user_id},
             {"$inc": {"balance": WEEKLY_COINS}, "$set": {"last_weekly_claim": datetime.utcnow()}},
@@ -88,4 +92,4 @@ async def bonus_handler(_, query: t.CallbackQuery):
             await query.message.delete()
         except:
             pass
-        return
+        return await query.answer("❌ Closed", show_alert=False)
