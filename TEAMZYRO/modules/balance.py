@@ -118,7 +118,7 @@ async def pay_callback(client: Client, callback_query):
         recipient_id = int(parts[2])
         amount = int(parts[3])
 
-        # ✅ Default: agar koi aur banda button dabaye
+        # ✅ Agar koi aur banda button dabaye
         if callback_query.from_user.id != sender_id:
             return await callback_query.answer(
                 "⚠️ You are not allowed to confirm this transaction!",
@@ -127,14 +127,20 @@ async def pay_callback(client: Client, callback_query):
 
         # ❌ Cancel
         if action == "pay_cancel":
-            await callback_query.message.edit_text("❌ Payment cancelled.")
+            await callback_query.message.edit_text(
+                "❌ Payment cancelled.",
+                reply_markup=None
+            )
             return await callback_query.answer("Transaction cancelled ✅")
 
         # ✅ Confirm
         if action == "pay_confirm":
             sender_balance = await get_balance(sender_id)
             if sender_balance < amount:
-                await callback_query.message.edit_text("❌ Transaction failed. Insufficient balance.")
+                await callback_query.message.edit_text(
+                    "❌ Transaction failed. Insufficient balance.",
+                    reply_markup=None
+                )
                 return await callback_query.answer("Insufficient balance ❌", show_alert=True)
 
             # Update balances
@@ -150,10 +156,11 @@ async def pay_callback(client: Client, callback_query):
             sender_display = html.escape(callback_query.from_user.first_name or str(sender_id))
             recipient_display = html.escape(recipient_name)
 
-            # Notify sender
+            # Notify sender (buttons hata do)
             await callback_query.message.edit_text(
                 f"✅ You paid {amount} coins to {recipient_display}.\n"
-                f"💰 Your New Balance: {updated_sender_balance} coins"
+                f"💰 Your New Balance: {updated_sender_balance} coins",
+                reply_markup=None
             )
 
             # Notify recipient
@@ -174,3 +181,4 @@ async def pay_callback(client: Client, callback_query):
     except Exception as e:
         print(f"PAY CALLBACK ERROR: {e}")
         return await callback_query.answer("⚠️ Error in processing payment!", show_alert=True)
+        
