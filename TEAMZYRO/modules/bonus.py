@@ -23,84 +23,77 @@ async def bonus_menu(_, message: t.Message):
     await message.reply_text("✨ ʙᴏɴᴜꜱ ᴍᴇɴᴜ ✨\n\nChoose one of the options below:", reply_markup=keyboard)
 
 
-# Callback handler (handles all bonus buttons)
-@bot.on_callback_query(filters.regex(r"^bonus:"))
+# Callback only for bonus buttons
+@bot.on_callback_query(filters.regex("^(daily_claim|weekly_claim|close_bonus)$"))
 async def bonus_handler(_, query: t.CallbackQuery):
-    try:
-        _, uid, action = query.data.split(":")
-        user_id = query.from_user.id
+    user_id = query.from_user.id
+    user = await user_collection.find_one({"id": user_id})
 
-        user = await user_collection.find_one({"id": user_id})
-        if not user:
-            user = {
-                "id": user_id,
-                "balance": 0,
-                "last_daily_claim": None,
-                "last_weekly_claim": None,
-            }
-            await user_collection.insert_one(user)
+    if not user:
+        user = {
+            "id": user_id,
+            "balance": 0,
+            "last_daily_claim": None,
+            "last_weekly_claim": None,
+        }
+        await user_collection.insert_one(user)
 
-        # DAILY
-        if action == "daily":
-            last_daily = user.get("last_daily_claim")
-            if last_daily and (datetime.utcnow() - last_daily) < timedelta(days=1):
-                remaining = timedelta(days=1) - (datetime.utcnow() - last_daily)
-                hours, remainder = divmod(int(remaining.total_seconds()), 3600)
-                minutes, seconds = divmod(remainder, 60)
-                return await query.answer(
-                    f"⏳ Already claimed! Next in {hours}h {minutes}m {seconds}s",
-                    show_alert=True
-                )
-
-            await user_collection.update_one(
-                {"id": user_id},
-                {"$inc": {"balance": DAILY_COINS}, "$set": {"last_daily_claim": datetime.utcnow()}},
-                upsert=True
-            )
-            updated = await user_collection.find_one({"id": user_id})
-            balance = int(updated.get("balance", 0))
-
+    # DAILY
+    if query.data == "daily_claim":
+        last_daily = user.get("last_daily_claim")
+        if last_daily and (datetime.utcnow() - last_daily) < timedelta(days=1):
+            remaining = timedelta(days=1) - (datetime.utcnow() - last_daily)
+            hours, remainder = divmod(int(remaining.total_seconds()), 3600)
+            minutes, seconds = divmod(remainder, 60)
             return await query.answer(
-                f"✅ Daily Bonus claimed!\n💰 +{DAILY_COINS} coins\n\n🔹 Balance: {balance}",
+                f"⏳ Already claimed! Next in {hours}h {minutes}m {seconds}s",
                 show_alert=True
             )
 
-        # WEEKLY
-        elif action == "weekly":
-            last_weekly = user.get("last_weekly_claim")
-            if last_weekly and (datetime.utcnow() - last_weekly) < timedelta(weeks=1):
-                remaining = timedelta(weeks=1) - (datetime.utcnow() - last_weekly)
-                days, remainder = divmod(int(remaining.total_seconds()), 86400)
-                hours, remainder = divmod(remainder, 3600)
-                minutes, seconds = divmod(remainder, 60)
-                return await query.answer(
-                    f"⏳ Already claimed! Next in {days}d {hours}h {minutes}m",
-                    show_alert=True
-                )
+        await user_collection.update_one(
+            {"id": user_id},
+            {"$inc": {"balance": DAILY_COINS}, "$set": {"last_daily_claim": datetime.utcnow()}},
+            upsert=True
+        )
+        updated = await user_collection.find_one({"id": user_id})
+        balance = int(updated.get("balance", 0))
 
-            await user_collection.update_one(
-                {"id": user_id},
-                {"$inc": {"balance": WEEKLY_COINS}, "$set": {"last_weekly_claim": datetime.utcnow()}},
-                upsert=True
-            )
-            updated = await user_collection.find_one({"id": user_id})
-            balance = int(updated.get("balance", 0))
+        return await query.answer(
+            f"✅ Daily Bonus claimed!\n💰 +{DAILY_COINS} coins\n\n🔹 Balance: {balance}",
+            show_alert=True
+        )
 
+    # WEEKLY
+    elif query.data == "weekly_claim":
+        last_weekly = user.get("last_weekly_claim")
+        if last_weekly and (datetime.utcnow() - last_weekly) < timedelta(weeks=1):
+            remaining = timedelta(weeks=1) - (datetime.utcnow() - last_weekly)
+            days, remainder = divmod(int(remaining.total_seconds()), 86400)
+            hours, remainder = divmod(remainder, 3600)
+            minutes, seconds = divmod(remainder, 60)
             return await query.answer(
-                f"✅ Weekly Bonus claimed!\n💰 +{WEEKLY_COINS} coins\n\n🔹 Balance: {balance}",
+                f"⏳ Already claimed! Next in {days}d {hours}h {minutes}m",
                 show_alert=True
             )
 
-        # CLOSE
-        elif action == "close":
-            try:
-                await query.message.delete()
-            except:
-                pass
-            return await query.answer("❌ Closed", show_alert=False)
+        await user_collection.update_one(
+            {"id": user_id},
+            {"$inc": {"balance": WEEKLY_COINS}, "$set": {"last_weekly_claim": datetime.utcnow()}},
+            upsert=True
+        )
+        updated = await user_collection.find_one({"id": user_id})
+        balance = int(updated.get("balance", 0))
 
-        return await query.answer("⚠️ Invalid action!", show_alert=True)
+        return await query.answer(
+            f"✅ Weekly Bonus claimed!\n💰 +{WEEKLY_COINS} coins\n\n🔹 Balance: {balance}",
+            show_alert=True
+        )
 
-    except Exception as e:
-        print(f"BONUS CALLBACK ERROR: {e}")
-        return await query.answer("⚠️ Error in processing bonus!", show_alert=True)
+    # CLOSE
+    elif query.data == "close_bonus":
+        try:
+            await query.message.delete()
+        except:
+            pass
+        return await query.answer("❌ Closed", show_alert=False)
+        
