@@ -1,648 +1,555 @@
-import random
-import math
 import asyncio
+import random
 import uuid
-import logging
-from datetime import datetime
+import math
+from datetime import datetime, timedelta
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from TEAMZYRO import ZYRO as bot, user_collection
-
-log = logging.getLogger(__name__)
+from TEAMZYRO import ZYRO as bot, user_collection, mines_collection, multi_collection, txn_collection
 
 # ---------------- Helpers ---------------- #
+async def get_balance(uid: int) -> int:
+    u = await user_collection.find_one({"id": uid}, {"balance": 1})
+    return int(u.get("balance", 0)) if u else 0
 
-def tiny(text: str) -> str:
-    """Return styled text in uppercase (tiny-caps effect)."""
-    try:
-        return str(text).upper()
-    except:
-        return text
+def build_board_kb(grid:int, opened:set, game_id:str, prefix="mplay"):
+    """Return InlineKeyboardMarkup for a grid (single or multi). prefix decides callback_data root."""
+    buttons = []
+    total = grid * grid
+    for i in range(total):
+        if i in opened:
+            text = "✅"
+        else:
+            text = "⬜"
+        buttons.append(InlineKeyboardButton(text, callback_data=f"{prefix}:{game_id}:{i}"))
+    rows = [buttons[i:i+grid] for i in range(0, total, grid)]
+    return InlineKeyboardMarkup(rows)
 
-async def mention_user(client, user_id: int) -> str:
-    """Return a clickable mention for the user. Fallback to id if fetch fails."""
-    try:
-        u = await client.get_users(user_id)
-        name = u.first_name or "User"
-        # Use markdown mention
-        return f"[{name}](tg://user?id={user_id})"
-    except Exception:
-        return f"[{user_id}](tg://user?id={user_id})"
+def build_board_kb_with_cash(grid:int, opened:set, game_id:str):
+    kb = build_board_kb(grid, opened, game_id, prefix="mplay")
+    # convert to list of lists, append cashout row
+    # Pyrogram InlineKeyboardMarkup expects list of rows; create fresh list
+    buttons = []
+    total = grid * grid
+    for i in range(total):
+        if i in opened:
+            text = "✅"
+        else:
+            text = "⬜"
+        buttons.append(InlineKeyboardButton(text, callback_data=f"mplay:{game_id}:{i}"))
+    rows = [buttons[i:i+grid] for i in range(0, total, grid)]
+    rows.append([InlineKeyboardButton("💸 Cashout", callback_data=f"mcash:{game_id}")])
+    return InlineKeyboardMarkup(rows)
 
-# ---------------- In-memory state ---------------- #
-# single-player games keyed by user_id (int)
-active_games = {}
+def build_multiplayer_kb(grid:int, opened:set, cid:str):
+    buttons = []
+    total = grid * grid
+    for i in range(total):
+        if i in opened:
+            text = "✅"
+        else:
+            text = "⬜"
+        buttons.append(InlineKeyboardButton(text, callback_data=f"mpplay:{cid}:{i}"))
+    rows = [buttons[i:i+grid] for i in range(0, total, grid)]
+    rows.append([InlineKeyboardButton("🔁 REFRESH", callback_data=f"mprefresh:{cid}")])
+    return InlineKeyboardMarkup(rows)
 
-# multiplayer pending challenges keyed by cid (str)
-pending_challenges = {}
-
-# active multiplayer games keyed by cid (str)
-active_mgames = {}
-
-# ---------------- Utility ---------------- #
-
-def gen_mines(total_cells: int, mines_count: int):
-    """Return a list of mine indices."""
-    return random.sample(range(total_cells), mines_count)
-
-def mines_count_by_size(size: int):
-    """Default mines for given sizes (customizable)."""
-    if size == 5:
-        return 5
-    if size == 9:
-        return 15
-    if size == 12:
-        return 25
-    # fallback
-    return max(5, size // 2)
-
-# ---------------- Single-player persistence helpers ---------------- #
-
-async def save_game(user_id: int, game: dict):
-    """Save single-player to DB cache and in-memory."""
-    try:
-        await user_collection.update_one({"id": user_id}, {"$set": {"active_game": game}}, upsert=True)
-    except Exception as e:
-        log.exception("DB save_game failed: %s", e)
-    active_games[user_id] = game
-
-async def load_game(user_id: int):
-    """Load single-player from memory or DB."""
-    if user_id in active_games:
-        return active_games[user_id]
-    try:
-        user = await user_collection.find_one({"id": user_id})
-        if user and "active_game" in user:
-            active_games[user_id] = user["active_game"]
-            return active_games[user_id]
-    except Exception as e:
-        log.exception("DB load_game failed: %s", e)
-    return None
-
-async def delete_game(user_id: int):
-    """Delete single-player game."""
-    active_games.pop(user_id, None)
-    try:
-        await user_collection.update_one({"id": user_id}, {"$unset": {"active_game": ""}})
-    except Exception as e:
-        log.exception("DB delete_game failed: %s", e)
-
-# ---------------- Single-player: /mines (5x5 board) ---------------- #
-
-@bot.on_message(filters.command("mines"))
-async def start_mines(client, message):
-    user_id = message.from_user.id
+# ---------------- Step 1: /mines <amount> -> show size buttons ---------------- #
+@bot.on_message(filters.command("mines") & ~filters.edited)
+async def mines_menu(client, message):
     args = message.text.split()
-    if len(args) < 3:
-        return await message.reply(tiny("USAGE: /MINES [COINS] [BOMBS]"))
+    user_id = message.from_user.id
+
+    if len(args) < 2:
+        return await message.reply_text("Usage: /mines <bet_amount>\nExample: /mines 100")
 
     try:
         bet = int(args[1])
-        bombs = int(args[2])
-    except Exception:
-        return await message.reply(tiny("⚠ INVALID NUMBERS"))
+    except:
+        return await message.reply_text("❌ Invalid bet amount")
 
-    if bombs < 2 or bombs > 20:
-        return await message.reply(tiny("⚠ BOMBS MUST BE BETWEEN 2 AND 20"))
+    if bet <= 0:
+        return await message.reply_text("❌ Bet must be > 0")
 
-    try:
-        user = await user_collection.find_one({"id": user_id})
-    except Exception as e:
-        log.exception("DB find_one failed: %s", e)
-        user = None
+    bal = await get_balance(user_id)
+    if bal < bet:
+        return await message.reply_text(f"🚨 Insufficient balance. Your balance: {bal} coins")
 
-    balance = user.get("balance", 0) if user else 0
-    if balance < bet:
-        return await message.reply(tiny("🚨 NOT ENOUGH COINS"))
-
-    # Deduct bet
-    try:
-        await user_collection.update_one({"id": user_id}, {"$inc": {"balance": -bet}}, upsert=True)
-    except Exception as e:
-        log.exception("DB deduct bet failed: %s", e)
-        return await message.reply(tiny("⚠ INTERNAL ERROR DEDUCTING BET"))
-
-    size = 5
-    total = size * size
-    mine_positions = gen_mines(total, bombs)
-    game = {
-        "mode": "single",
+    # create a pending request id (user must select grid size)
+    rid = uuid.uuid4().hex[:8]
+    await mines_collection.insert_one({
+        "req_id": rid,
+        "type": "pending_req",
+        "user_id": user_id,
         "bet": bet,
-        "bombs": bombs,
-        "size": size,
-        "mine_positions": mine_positions,
-        "clicked": [],
-        "multiplier": 1.0,
-        "started_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow()
+    })
+
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("3 x 3", callback_data=f"mines:req:{rid}:3")],
+        [InlineKeyboardButton("9 x 9", callback_data=f"mines:req:{rid}:9")],
+        [InlineKeyboardButton("12 x 12", callback_data=f"mines:req:{rid}:12")]
+    ])
+
+    await message.reply_text(
+        f"Choose board size for bet {bet} coins:\n3x3 (easy) | 9x9 | 12x12 (hard)",
+        reply_markup=kb
+    )
+
+# ---------------- Start single-player game when size selected ---------------- #
+async def start_single_game(client, cq, req_doc, grid:int):
+    user_id = req_doc["user_id"]
+    bet = int(req_doc["bet"])
+
+    # double-check pending and balance
+    fresh = await mines_collection.find_one({"req_id": req_doc["req_id"], "type": "pending_req"})
+    if not fresh:
+        return await cq.answer("❌ Request expired!", show_alert=True)
+
+    bal = await get_balance(user_id)
+    if bal < bet:
+        # cleanup
+        await mines_collection.delete_one({"req_id": req_doc["req_id"]})
+        return await cq.answer("🚨 Insufficient balance to start game", show_alert=True)
+
+    # deduct bet immediately
+    await user_collection.update_one({"id": user_id}, {"$inc": {"balance": -bet}}, upsert=True)
+
+    total_cells = grid * grid
+    # choose number of mines: make it proportional to grid (for fun)
+    if grid == 3:
+        mines = 3
+    elif grid == 9:
+        mines = 15
+    else:  # 12
+        mines = 25
+
+    mine_positions = random.sample(range(total_cells), mines)
+
+    game_id = uuid.uuid4().hex[:10]
+    game_doc = {
+        "game_id": game_id,
+        "type": "single_game",
+        "user_id": user_id,
+        "bet": bet,
+        "grid": grid,
+        "mines": mine_positions,
+        "opened": [],      # list of ints
+        "multiplier": 1.00,
+        "created_at": datetime.utcnow(),
+        "active": True
     }
 
-    await save_game(user_id, game)
+    await mines_collection.insert_one(game_doc)
+    # remove pending_req doc
+    await mines_collection.delete_one({"req_id": req_doc["req_id"]})
 
-    keyboard = [
-        [InlineKeyboardButton("❓", callback_data=f"s:{i*size+j}") for j in range(size)]
-        for i in range(size)
-    ]
-    keyboard.append([InlineKeyboardButton("💸 CASH OUT", callback_data="s:cash")])
-
+    # send board
+    kb = build_board_kb_with_cash(grid, set(), game_id)
+    await cq.message.reply_text(
+        f"🎮 Mines started — {grid}x{grid}\nBet: {bet} coins\nTap a box. Cashout anytime.",
+        reply_markup=kb
+    )
     try:
-        await message.reply(
-            tiny(f"🎮 MINES GAME STARTED!\nBET: {bet}  BOMBS: {bombs}  MULTIPLIER: 1.00X"),
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-    except Exception as e:
-        log.exception("Failed to send start mines message: %s", e)
-        await message.reply(tiny("⚠ FAILED TO START GAME"))
-
-# ---------------- Core logic functions (no decorators) ---------------- #
-# These are called by the universal callback handler below.
-
-async def _single_tile_press(client, cq):
-    # Always answer callback quickly so Telegram shows button as pressed
-    try:
-        await cq.answer()
+        await cq.answer()  # acknowledge original press
     except:
         pass
 
-    user_id = cq.from_user.id
+# ---------------- Single-player tile press ---------------- #
+async def handle_single_press(client, cq, game_id, cell_index:int):
     try:
-        pos = int(cq.data.split(":")[1])
-    except Exception:
-        return await cq.answer(tiny("⚠ INVALID BUTTON"), show_alert=True)
+        game = await mines_collection.find_one({"game_id": game_id, "type": "single_game", "active": True})
+        if not game:
+            return await cq.answer("⚠️ Game not found or already finished", show_alert=True)
+        if cq.from_user.id != game["user_id"]:
+            return await cq.answer("⚠️ This is not your game", show_alert=True)
 
-    game = await load_game(user_id)
-    if not game or game.get("mode") != "single":
-        return await cq.answer(tiny("⚠ NO ACTIVE GAME"), show_alert=True)
+        opened = set(game.get("opened", []))
+        if cell_index in opened:
+            return await cq.answer("⏳ Already opened")
 
-    if pos in game["clicked"]:
-        return await cq.answer(tiny("ALREADY OPENED"), show_alert=True)
+        # mark opened
+        opened.add(cell_index)
 
-    game["clicked"].append(pos)
-
-    # if mine
-    if pos in game["mine_positions"]:
-        await delete_game(user_id)
-        size = game["size"]
-        keyboard = []
-        for i in range(size):
-            row = []
-            for j in range(size):
-                idx = i*size + j
-                if idx in game["mine_positions"]:
-                    row.append(InlineKeyboardButton("💣", callback_data="s:ign"))
-                elif idx in game["clicked"]:
-                    row.append(InlineKeyboardButton("✅", callback_data="s:ign"))
-                else:
-                    row.append(InlineKeyboardButton("❎", callback_data="s:ign"))
-            keyboard.append(row)
-
-        text = tiny(f"💥 BOOM! MINE HIT.\nLOST: {game['bet']} COINS")
-
-        # Try to edit the current message; if fails, try sending a new message
-        try:
-            await cq.message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-        except Exception as e:
-            log.exception("single mine hit edit_text failed: %s", e)
+        # hit mine?
+        if cell_index in game["mines"]:
+            # reveal board and end game (user loses; bet already deducted earlier)
+            await mines_collection.update_one({"game_id": game_id}, {"$set": {"active": False, "opened": list(opened)}})
+            kb = build_board_kb(game["grid"], opened, game_id, prefix="mplay")
+            # reveal mines visually by editing message — we'll replace unopened cells with ❎, mines with 💣
+            # Construct textual board representation for clarity
             try:
-                await cq.message.reply(text, reply_markup=InlineKeyboardMarkup(keyboard))
-            except Exception:
-                pass
-        return
+                text = f"💥 BOOM! You hit a mine.\nYou lost: {game['bet']} coins"
+                # edit existing message (best-effort)
+                await cq.message.edit_text(text, reply_markup=kb)
+            except:
+                await cq.message.reply_text(text, reply_markup=kb)
+            return await cq.answer("💥 Mine hit!", show_alert=True)
 
-    # safe
-    game["multiplier"] = round(game["multiplier"] + 0.05, 2)
-    potential_win = math.floor(game["bet"] * game["multiplier"])
-    await save_game(user_id, game)
+        # safe hit: increase multiplier (example: +0.05 per safe)
+        new_mult = round(float(game.get("multiplier", 1.0)) + 0.05, 2)
+        await mines_collection.update_one({"game_id": game_id}, {"$set": {"opened": list(opened), "multiplier": new_mult}})
 
-    # update view
-    size = game["size"]
-    keyboard = []
-    for i in range(size):
-        row = []
-        for j in range(size):
-            idx = i*size + j
-            if idx in game["clicked"]:
-                row.append(InlineKeyboardButton("✅", callback_data="s:ign"))
-            else:
-                row.append(InlineKeyboardButton("❓", callback_data=f"s:{idx}"))
-        keyboard.append(row)
-    keyboard.append([InlineKeyboardButton("💸 CASH OUT", callback_data="s:cash")])
+        # potential payout
+        potential = math.floor(game["bet"] * new_mult)
 
-    status = tiny(f"🎮 MINES GAME\nBET: {game['bet']}  BOMBS: {game['bombs']}  MULTIPLIER: {game['multiplier']:.2f}X  POTENTIAL: {potential_win}")
-
-    # prefer editing only markup when possible — but we replace text+markup for consistent display
-    try:
-        await cq.message.edit_text(status, reply_markup=InlineKeyboardMarkup(keyboard))
-    except Exception as e:
-        log.exception("single_tile_press edit_text failed: %s", e)
-        # try send fallback so players still see updates
+        kb = build_board_kb_with_cash(game["grid"], opened, game_id)
+        status = f"🎮 Mines\nBet: {game['bet']} | Opened: {len(opened)}/{game['grid']*game['grid']} | Mult: {new_mult:.2f}x\nPotential: {potential} coins"
         try:
-            await cq.message.reply(status, reply_markup=InlineKeyboardMarkup(keyboard))
-        except Exception:
-            pass
-
-async def _single_cashout(client, cq):
-    try:
-        await cq.answer()
-    except:
-        pass
-
-    user_id = cq.from_user.id
-    game = await load_game(user_id)
-    if not game or game.get("mode") != "single":
-        return await cq.answer(tiny("⚠ NO ACTIVE GAME"), show_alert=True)
-
-    await delete_game(user_id)
-    earned = math.floor(game["bet"] * game["multiplier"])
-    try:
-        await user_collection.update_one({"id": user_id}, {"$inc": {"balance": earned}}, upsert=True)
-        user = await user_collection.find_one({"id": user_id})
+            await cq.message.edit_text(status, reply_markup=kb)
+        except:
+            await cq.message.reply_text(status, reply_markup=kb)
+        return await cq.answer("✅ Safe!")
     except Exception as e:
-        log.exception("DB cashout failed: %s", e)
-        user = None
-
-    new_balance = user.get("balance", 0) if user else 0
-
-    size = game["size"]
-    keyboard = []
-    for i in range(size):
-        row = []
-        for j in range(size):
-            idx = i*size + j
-            if idx in game["mine_positions"]:
-                row.append(InlineKeyboardButton("💣", callback_data="s:ign"))
-            elif idx in game["clicked"]:
-                row.append(InlineKeyboardButton("✅", callback_data="s:ign"))
-            else:
-                row.append(InlineKeyboardButton("❎", callback_data="s:ign"))
-        keyboard.append(row)
-
-    msg_text = tiny(f"✅ CASHED OUT!\nWON: {earned} COINS\nMULTIPLIER: {game['multiplier']:.2f}X\nBALANCE: {new_balance}")
-
-    try:
-        msg = await cq.message.edit_text(msg_text, reply_markup=InlineKeyboardMarkup(keyboard))
-    except Exception as e:
-        log.exception("single_cashout edit_text failed: %s", e)
+        print("SINGLE PRESS ERROR:", e)
         try:
-            msg = await cq.message.reply(msg_text, reply_markup=InlineKeyboardMarkup(keyboard))
-        except Exception:
-            msg = None
-
-    # remove the message after short delay to clean up UI
-    if msg:
-        await asyncio.sleep(5)
-        try:
-            await msg.delete()
+            return await cq.answer("⚠️ Error", show_alert=True)
         except:
             pass
 
-async def _single_ignore(client, cq):
-    # Acknowledge and ignore - this prevents the "button not responding" feeling
+# ---------------- Single-player Cashout ---------------- #
+async def handle_single_cashout(client, cq, game_id):
     try:
-        await cq.answer()
-    except:
-        pass
-    # nothing else
+        game = await mines_collection.find_one({"game_id": game_id, "type": "single_game", "active": True})
+        if not game:
+            return await cq.answer("⚠️ No active game", show_alert=True)
+        if cq.from_user.id != game["user_id"]:
+            return await cq.answer("⚠️ Not your game", show_alert=True)
 
-# ---------------- Multiplayer: /mgame challenge flow (core logic functions) ---------------- #
+        payout = math.floor(game["bet"] * float(game.get("multiplier", 1.0)))
+        # mark inactive and credit user
+        await mines_collection.update_one({"game_id": game_id}, {"$set": {"active": False}})
+        await user_collection.update_one({"id": cq.from_user.id}, {"$inc": {"balance": payout}}, upsert=True)
 
-@bot.on_message(filters.command("mgame"))
-async def mgame_command(client, message):
-    """
-    Usage:
-        /mgame [bet] [@username]
-    Or: reply to a user's message with /mgame [bet]
-    """
-    challenger = message.from_user
+        kb = build_board_kb(game["grid"], set(game.get("opened", [])), game_id, prefix="mplay")
+        text = f"💸 Cashed out!\nYou won: {payout} coins\nNew balance updated."
+        try:
+            await cq.message.edit_text(text, reply_markup=kb)
+        except:
+            await cq.message.reply_text(text, reply_markup=kb)
+        return await cq.answer(f"💸 +{payout} coins", show_alert=True)
+    except Exception as e:
+        print("SINGLE CASHOUT ERROR:", e)
+        try:
+            return await cq.answer("⚠️ Error cashing out", show_alert=True)
+        except:
+            pass
+
+# ---------------- Multiplayer challenge: /mchallenge <bet> @user or reply ---------------- #
+@bot.on_message(filters.command("mchallenge") & ~filters.edited)
+async def mchallenge_cmd(client, message):
     args = message.text.split()
+    challenger = message.from_user
     if len(args) < 2 and not message.reply_to_message:
-        return await message.reply(tiny("USAGE: /MGAME [BET] [@USER OR REPLY]"))
+        return await message.reply_text("Usage: /mchallenge <bet> @username\nOr reply to user's message with /mchallenge <bet>")
 
     try:
-        bet = int(args[1]) if len(args) >= 2 else None
-    except Exception:
-        return await message.reply(tiny("⚠ INVALID BET AMOUNT"))
+        bet = int(args[1])
+    except:
+        return await message.reply_text("❌ Invalid bet amount")
 
-    # resolve opponent
-    opponent_id = None
-    opponent_name = None
-    if len(args) >= 3:
-        mention = args[2]
+    if message.reply_to_message:
+        opponent = message.reply_to_message.from_user
+    else:
+        if len(args) < 3:
+            return await message.reply_text("Tag the opponent: /mchallenge <bet> @username")
         try:
-            u = await client.get_users(mention)
-            opponent_id = u.id
-            opponent_name = u.first_name
-        except Exception:
-            opponent_id = None
-    elif message.reply_to_message:
-        opponent_id = message.reply_to_message.from_user.id
-        opponent_name = message.reply_to_message.from_user.first_name
+            target = args[2].replace("@", "")
+            opponent_user = await client.get_users(target)
+            opponent = opponent_user
+        except:
+            return await message.reply_text("❌ Could not resolve user. Tag or reply to a user.")
 
-    if opponent_id is None:
-        return await message.reply(tiny("⚠ COULD NOT RESOLVE OPPONENT. TAG OR REPLY TO A USER."))
+    if opponent.id == challenger.id:
+        return await message.reply_text("❌ Cannot challenge yourself")
 
-    # check balances
-    try:
-        chal_user = await user_collection.find_one({"id": challenger.id}) or {}
-        opp_user = await user_collection.find_one({"id": opponent_id}) or {}
-    except Exception as e:
-        log.exception("DB find_one in mgame_command failed: %s", e)
-        chal_user = {}
-        opp_user = {}
+    # check balances quickly
+    bal_c = await get_balance(challenger.id)
+    bal_o = await get_balance(opponent.id)
+    if bal_c < bet:
+        return await message.reply_text("🚨 You don't have enough to challenge")
+    if bal_o < bet:
+        return await message.reply_text("🚨 Opponent doesn't have enough coins")
 
-    if (chal_user.get("balance", 0)) < bet:
-        return await message.reply(tiny("🚨 YOU DONT HAVE ENOUGH COINS TO CHALLENGE"))
-    if (opp_user.get("balance", 0)) < bet:
-        return await message.reply(tiny("🚨 OPPONENT DOES NOT HAVE ENOUGH COINS"))
-
-    # create challenge id
     cid = uuid.uuid4().hex[:8]
-    pending_challenges[cid] = {
+    # store pending challenge
+    await multi_collection.insert_one({
         "cid": cid,
+        "type": "challenge",
         "challenger": challenger.id,
-        "opponent": opponent_id,
+        "opponent": opponent.id,
         "bet": bet,
-        "created_at": datetime.utcnow().isoformat()
-    }
+        "created_at": datetime.utcnow(),
+        "status": "pending"
+    })
 
-    kb = [
-        [InlineKeyboardButton("✅ ACCEPT", callback_data=f"mg:acc:{cid}"),
-         InlineKeyboardButton("❌ DECLINE", callback_data=f"mg:rej:{cid}")]
-    ]
-
-    # send challenge to opponent (private) - best-effort
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ ACCEPT", callback_data=f"mch:acc:{cid}"),
+         InlineKeyboardButton("❌ DECLINE", callback_data=f"mch:rej:{cid}")]
+    ])
+    # send private invite to opponent
     try:
-        await client.send_message(
-            opponent_id,
-            tiny(f"🎮 YOU HAVE BEEN CHALLENGED BY {challenger.first_name}\nBET: {bet} COINS EACH\nCLICK TO ACCEPT OR DECLINE"),
-            reply_markup=InlineKeyboardMarkup(kb)
-        )
+        await client.send_message(opponent.id, f"🎮 Challenge from {challenger.first_name}\nBet: {bet} coins\nAccept or Decline", reply_markup=kb)
     except Exception as e:
-        log.exception("Failed to send challenge: %s", e)
-        pending_challenges.pop(cid, None)
-        return await message.reply(tiny("⚠ COULD NOT SEND CHALLENGE TO OPPONENT (PRIVATE MESSAGES MAY BE CLOSED)."))
+        print("CHALLENGE SEND FAIL:", e)
+        # cleanup
+        await multi_collection.delete_one({"cid": cid})
+        return await message.reply_text("⚠ Could not send challenge (opponent may have PMs closed)")
 
-    await message.reply(tiny(f"CHALLENGE SENT TO {opponent_name} (ID {cid})"))
+    await message.reply_text(f"Challenge sent to {opponent.first_name} (cid: {cid}) — waiting for accept")
 
-async def _mg_reject_handler(client, cq):
+# ---------------- Multiplayer accept/reject handlers & size selection ---------------- #
+async def mch_reject(client, cq, cid):
+    doc = await multi_collection.find_one({"cid": cid, "type": "challenge", "status": "pending"})
+    if not doc:
+        return await cq.answer("⚠ Challenge expired", show_alert=True)
+    if cq.from_user.id != doc["opponent"]:
+        return await cq.answer("⚠ This invite is not for you", show_alert=True)
+    await multi_collection.update_one({"cid": cid}, {"$set": {"status": "rejected"}})
+    await cq.message.edit_text("❌ Challenge Declined")
     try:
-        await cq.answer()
+        await client.send_message(doc["challenger"], f"Your challenge {cid} was declined by opponent.")
     except:
         pass
+    return await cq.answer("Declined ✅")
 
-    cid = cq.data.split(":")[2]
-    chal = pending_challenges.get(cid)
-    if not chal:
-        return await cq.answer(tiny("⚠ CHALLENGE NOT FOUND"), show_alert=True)
-    if cq.from_user.id != chal["opponent"]:
-        return await cq.answer(tiny("THIS IS NOT FOR YOU"), show_alert=True)
+async def mch_accept(client, cq, cid):
+    doc = await multi_collection.find_one({"cid": cid, "type": "challenge", "status": "pending"})
+    if not doc:
+        return await cq.answer("⚠ Challenge expired", show_alert=True)
+    if cq.from_user.id != doc["opponent"]:
+        return await cq.answer("⚠ This invite is not for you", show_alert=True)
 
-    pending_challenges.pop(cid, None)
+    # send size selection (we'll reuse a similar flow: 3x3,9x9,12x12)
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("3 x 3", callback_data=f"mch:size:{cid}:3")],
+        [InlineKeyboardButton("9 x 9", callback_data=f"mch:size:{cid}:9")],
+        [InlineKeyboardButton("12 x 12", callback_data=f"mch:size:{cid}:12")]
+    ])
     try:
-        await cq.message.edit_text(tiny("CHALLENGE DECLINED"))
-    except Exception:
-        pass
-    try:
-        await client.send_message(chal["challenger"], tiny(f"YOUR CHALLENGE {cid} WAS DECLINED"))
+        await cq.message.edit_text("Select board size for multiplayer duel:", reply_markup=kb)
     except:
-        pass
+        await cq.message.reply_text("Select board size for multiplayer duel:", reply_markup=kb)
+    return await cq.answer()
 
-async def _mg_accept_handler(client, cq):
-    try:
-        await cq.answer()
-    except:
-        pass
+async def mch_size_selected(client, cq, cid, grid_choice:int):
+    doc = await multi_collection.find_one({"cid": cid, "type": "challenge", "status": "pending"})
+    if not doc:
+        return await cq.answer("⚠ Challenge expired", show_alert=True)
 
-    cid = cq.data.split(":")[2]
-    chal = pending_challenges.get(cid)
-    if not chal:
-        return await cq.answer(tiny("⚠ CHALLENGE NOT FOUND"), show_alert=True)
-    if cq.from_user.id != chal["opponent"]:
-        return await cq.answer(tiny("THIS IS NOT FOR YOU"), show_alert=True)
-
-    # show size selection
-    kb = [
-        [InlineKeyboardButton("5 x 5", callback_data=f"mg:size:{cid}:5")],
-        [InlineKeyboardButton("9 x 9", callback_data=f"mg:size:{cid}:9")],
-        [InlineKeyboardButton("12 x 12", callback_data=f"mg:size:{cid}:12")],
-    ]
-    try:
-        # prefer editing markup only when possible
-        try:
-            await cq.message.edit_text(tiny("SELECT BOARD SIZE"), reply_markup=InlineKeyboardMarkup(kb))
-        except Exception:
-            await cq.message.reply(tiny("SELECT BOARD SIZE"), reply_markup=InlineKeyboardMarkup(kb))
-    except Exception as e:
-        log.exception("mg_accept_handler failed: %s", e)
-
-async def _mg_size_selected(client, cq):
-    try:
-        await cq.answer()
-    except:
-        pass
-
-    parts = cq.data.split(":")
-    try:
-        cid = parts[2]
-        size = int(parts[3])
-    except Exception:
-        return await cq.answer(tiny("⚠ INVALID SELECTION"), show_alert=True)
-
-    chal = pending_challenges.get(cid)
-    if not chal:
-        return await cq.answer(tiny("⚠ CHALLENGE EXPIRED"), show_alert=True)
-
-    challenger_id = chal["challenger"]
-    opponent_id = chal["opponent"]
-    bet = chal["bet"]
+    challenger = doc["challenger"]
+    opponent = doc["opponent"]
+    bet = doc["bet"]
 
     # re-check balances
-    try:
-        chal_user = await user_collection.find_one({"id": challenger_id}) or {}
-        opp_user = await user_collection.find_one({"id": opponent_id}) or {}
-    except Exception as e:
-        log.exception("DB find_one in mg_size_selected failed: %s", e)
-        chal_user = {}
-        opp_user = {}
+    bal_c = await get_balance(challenger)
+    bal_o = await get_balance(opponent)
+    if bal_c < bet or bal_o < bet:
+        await multi_collection.update_one({"cid": cid}, {"$set": {"status": "failed", "reason": "insufficient"}})
+        return await cq.answer("🚨 One of players has insufficient balance", show_alert=True)
 
-    if (chal_user.get("balance", 0)) < bet:
-        pending_challenges.pop(cid, None)
-        return await cq.answer(tiny("CHALLENGER INSUFFICIENT FUNDS"), show_alert=True)
-    if (opp_user.get("balance", 0)) < bet:
-        pending_challenges.pop(cid, None)
-        return await cq.answer(tiny("OPPONENT INSUFFICIENT FUNDS"), show_alert=True)
+    # deduct bets for both
+    await user_collection.update_one({"id": challenger}, {"$inc": {"balance": -bet}}, upsert=True)
+    await user_collection.update_one({"id": opponent}, {"$inc": {"balance": -bet}}, upsert=True)
 
-    # deduct bets
-    try:
-        await user_collection.update_one({"id": challenger_id}, {"$inc": {"balance": -bet}}, upsert=True)
-        await user_collection.update_one({"id": opponent_id}, {"$inc": {"balance": -bet}}, upsert=True)
-    except Exception as e:
-        log.exception("DB deduct in mg_size_selected failed: %s", e)
-        return await cq.answer(tiny("⚠ INTERNAL ERROR PROCESSING BETS"), show_alert=True)
+    # create multiplayer game doc
+    total_cells = grid_choice * grid_choice
+    if grid_choice == 3:
+        mines = 3
+    elif grid_choice == 9:
+        mines = 15
+    else:
+        mines = 25
 
-    # create game
-    total_cells = size * size
-    mines_count = mines_count_by_size(size)
-    mine_positions = gen_mines(total_cells, mines_count)
-
+    mine_positions = random.sample(range(total_cells), mines)
     game = {
         "cid": cid,
-        "mode": "multi",
-        "players": [challenger_id, opponent_id],
+        "type": "multi_game",
+        "players": [challenger, opponent],
         "bet": bet,
-        "size": size,
-        "bombs": mines_count,
-        "mine_positions": mine_positions,
-        "clicked": [],
-        "turn": challenger_id,  # challenger starts
-        "started_at": datetime.utcnow().isoformat()
+        "grid": grid_choice,
+        "mines": mine_positions,
+        "opened": [],
+        "turn": challenger,  # challenger starts
+        "active": True,
+        "created_at": datetime.utcnow()
     }
+    await multi_collection.update_one({"cid": cid}, {"$set": game, "$unset": {"status": ""}}, upsert=True)
 
-    active_mgames[cid] = game
-    pending_challenges.pop(cid, None)
-
-    # build keyboard
-    def build_board_kb(g):
-        sz = g["size"]
-        kb = []
-        for i in range(sz):
-            row = []
-            for j in range(sz):
-                idx = i*sz + j
-                row.append(InlineKeyboardButton("❓", callback_data=f"mp:{g['cid']}:{idx}"))
-            kb.append(row)
-        kb.append([InlineKeyboardButton("🔁 REFRESH", callback_data=f"mp:refresh:{g['cid']}")])
-        return kb
-
-    kb = build_board_kb(game)
-
-    # Compose status showing mentions for turn
+    # notify both players: build board keyboard
+    kb = build_multiplayer_kb(grid_choice, set(), cid)
+    status = f"🎮 Mines Duel STARTED!\nBet each: {bet} | Pool: {bet*2}\nGrid: {grid_choice}x{grid_choice}\nTurn: Player (id {game['turn']})"
+    # send to opponent (where selection happened) and challenger
     try:
-        turn_mention = await mention_user(client, game["turn"])
-    except Exception:
-        turn_mention = str(game["turn"])
-
-    status_text = tiny(f"🎮 MINES DUEL STARTED!\nBET: {bet} EACH  POOL: {bet*2}\nSIZE: {size}x{size}  BOMBS: {mines_count}\nTURN: {turn_mention}")
-
-    # Try to edit opponent message and notify challenger
+        await cq.message.edit_text("Match started! Check your private message for board.")
+    except:
+        pass
+    # DM challenger
     try:
-        await cq.message.edit_text(status_text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="markdown")
-    except Exception:
+        await client.send_message(challenger, status, reply_markup=kb)
+    except:
+        pass
+    # DM opponent
+    try:
+        await client.send_message(opponent, status, reply_markup=kb)
+    except:
+        pass
+    return await cq.answer("Match started ✅")
+
+# ---------------- Multiplayer play handler ---------------- #
+async def handle_mp_play(client, cq, cid, cell_idx:int):
+    doc = await multi_collection.find_one({"cid": cid, "type": "multi_game", "active": True})
+    if not doc:
+        return await cq.answer("⚠ No active multi-game", show_alert=True)
+
+    player = cq.from_user.id
+    if player not in doc["players"]:
+        return await cq.answer("⚠ You're not part of this match", show_alert=True)
+
+    if player != doc["turn"]:
+        return await cq.answer("⏳ Wait for your turn", show_alert=True)
+
+    opened = set(doc.get("opened", []))
+    if cell_idx in opened:
+        return await cq.answer("⏳ Already opened")
+
+    opened.add(cell_idx)
+
+    # mine?
+    if cell_idx in doc["mines"]:
+        # other player wins pool
+        other = [p for p in doc["players"] if p != player][0]
+        pool = doc["bet"] * 2
+        await user_collection.update_one({"id": other}, {"$inc": {"balance": pool}}, upsert=True)
+        await multi_collection.update_one({"cid": cid}, {"$set": {"active": False, "opened": list(opened)}})
+        kb = build_multiplayer_kb(doc["grid"], opened, cid)
+        text = f"💥 Player {player} hit a mine!\n🏆 Player {other} wins the pool: {pool} coins"
         try:
-            await cq.message.reply(status_text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="markdown")
-        except Exception:
-            pass
-
-    # send a message to challenger too (private)
-    try:
-        await client.send_message(game["players"][0], status_text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="markdown")
-    except Exception:
-        pass
-
-async def _mp_refresh_handler(client, cq):
-    """Refresh the board view for the player who pressed refresh."""
-    try:
-        await cq.answer()
-    except:
-        pass
-    cid = cq.data.split(":")[2]
-    game = active_mgames.get(cid)
-    if not game:
-        return await cq.answer(tiny("⚠ NO ACTIVE MULTIPLAYER GAME"), show_alert=True)
-
-    # rebuild keyboard showing opened tiles
-    sz = game["size"]
-    keyboard = []
-    for i in range(sz):
-        row = []
-        for j in range(sz):
-            idx = i*sz + j
-            if idx in game["clicked"]:
-                row.append(InlineKeyboardButton("✅", callback_data=f"mpx:{cid}:ign"))
-            else:
-                row.append(InlineKeyboardButton("❓", callback_data=f"mp:{cid}:{idx}"))
-        keyboard.append(row)
-    keyboard.append([InlineKeyboardButton("🔁 REFRESH", callback_data=f"mp:refresh:{cid}")])
-
-    try:
-        turn_mention = await mention_user(client, game["turn"])
-    except:
-        turn_mention = str(game["turn"])
-
-    status = tiny(f"🎮 MINES DUEL\nBET: {game['bet']} EACH  POOL: {game['bet']*2}\nSIZE: {sz}x{sz}  BOMBS: {game['bombs']}\nTURN: {turn_mention}")
-
-    # edit current message
-    try:
-        await cq.message.edit_text(status, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="markdown")
-    except Exception as e:
-        log.exception("mp_tile_handler update edit_text failed: %s", e)
-        # best-effort: send direct messages to players so they see the updated board
-        for p in game["players"]:
-            try:
-                await client.send_message(p, status, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="markdown")
-            except:
-                pass
-
-async def _mp_ignore_buttons(client, cq):
-    # Acknowledge and ignore revealed/disabled presses
-    try:
-        await cq.answer()
-    except:
-        pass
-    # nothing else
-
-# ---------------- Universal callback handler (single place to catch all callback_data) ---------------- #
-
-@bot.on_callback_query()
-async def universal_callback_router(client, cq):
-    """
-    Single callback entrypoint. Routes callback_data to the right internal handler.
-    This avoids issues with multiple regex-based handlers not registering properly.
-    """
-    data = cq.data or ""
-    # quick debug log (comment out or use logging in production)
-    try:
-        log.info("Callback received: %s from %s", data, cq.from_user.id)
-    except:
-        pass
-
-    # SINGLE PLAYER: s:
-    if data.startswith("s:"):
-        # exact matches first
-        if data == "s:cash":
-            return await _single_cashout(client, cq)
-        if data == "s:ign":
-            return await _single_ignore(client, cq)
-        # tile press like s:12
-        return await _single_tile_press(client, cq)
-
-    # MGAME (challenge) handlers: mg:rej:, mg:acc:, mg:size:
-    if data.startswith("mg:rej:"):
-        return await _mg_reject_handler(client, cq)
-    if data.startswith("mg:acc:"):
-        return await _mg_accept_handler(client, cq)
-    if data.startswith("mg:size:"):
-        return await _mg_size_selected(client, cq)
-
-    # MULTIPLAYER: mp:refresh:, mp:..., mpx:...
-    if data.startswith("mp:refresh:"):
-        return await _mp_refresh_handler(client, cq)
-    if data.startswith("mpx:"):
-        # ignored/disabled tile presses
-        return await _mp_ignore_buttons(client, cq)
-    if data.startswith("mp:"):
-        # multiplayer tile press - currently refresh covers view, individual tile presses
-        # can be implemented here if you want turn-based tile press logic.
-        # For now, we respond with a helpful message.
+            await cq.message.edit_text(text, reply_markup=kb)
+        except:
+            await client.send_message(player, text, reply_markup=kb)
+        # notify other
         try:
-            await cq.answer("Use REFRESH to update board or wait for opponent.", show_alert=False)
+            await client.send_message(other, f"🏆 You won {pool} coins! Opponent hit a mine.")
         except:
             pass
-        return
+        return await cq.answer("💥 Mine! Opponent wins", show_alert=True)
 
-    # fallback for unknown buttons
+    # safe: mark opened and switch turn
+    await multi_collection.update_one({"cid": cid}, {"$set": {"opened": list(opened), "turn": [p for p in doc["players"] if p != player][0]}})
+    new_turn = [p for p in doc["players"] if p != player][0]
+    kb = build_multiplayer_kb(doc["grid"], opened, cid)
+    status = f"🎮 Mines Duel\nPool: {doc['bet']*2} | Opened: {len(opened)}/{doc['grid']*doc['grid']}\nTurn: {new_turn}"
     try:
-        await cq.answer("⚠ Unknown or expired button.", show_alert=True)
+        await cq.message.edit_text(status, reply_markup=kb)
+    except:
+        # best effort: DM both players
+        for p in doc["players"]:
+            try:
+                await client.send_message(p, status, reply_markup=kb)
+            except:
+                pass
+    return await cq.answer("✅ Safe")
+
+# ---------------- Multiplayer refresh ---------------- #
+async def handle_mp_refresh(client, cq, cid):
+    doc = await multi_collection.find_one({"cid": cid, "type": "multi_game"})
+    if not doc:
+        return await cq.answer("⚠ Match not found", show_alert=True)
+    kb = build_multiplayer_kb(doc["grid"], set(doc.get("opened", [])), cid)
+    status = f"🎮 Mines Duel\nPool: {doc['bet']*2} | Opened: {len(doc.get('opened', []))}/{doc['grid']*doc['grid']}\nTurn: {doc.get('turn')}"
+    try:
+        await cq.message.edit_text(status, reply_markup=kb)
+    except:
+        for p in doc["players"]:
+            try:
+                await client.send_message(p, status, reply_markup=kb)
+            except:
+                pass
+    return await cq.answer("Refreshed ✅")
+
+# ---------------- Universal callback router ---------------- #
+@bot.on_callback_query()
+async def universal_router(client, cq):
+    data = cq.data or ""
+    # debug log
+    try:
+        print(f"[CALLBACK] {cq.from_user.id} -> {data}")
     except:
         pass
 
-# ---------------- End of file ---------------- #
+    # mines pending request -> size selection
+    if data.startswith("mines:req:"):
+        # format: mines:req:<rid>:<grid>
+        parts = data.split(":")
+        if len(parts) != 4:
+            return await cq.answer("⚠ Invalid", show_alert=True)
+        _, _, rid, grid_s = parts
+        # find pending req
+        req = await mines_collection.find_one({"req_id": rid, "type": "pending_req"})
+        if not req:
+            return await cq.answer("⚠ Request expired or invalid", show_alert=True)
+        if cq.from_user.id != req["user_id"]:
+            return await cq.answer("⚠ Not your selection", show_alert=True)
+        try:
+            grid = int(grid_s)
+        except:
+            return await cq.answer("⚠ Invalid grid", show_alert=True)
+        # start single game
+        return await start_single_game(client, cq, req, grid)
+
+    # single-player play
+    if data.startswith("mplay:"):
+        # format mplay:<game_id>:<cell>
+        parts = data.split(":")
+        if len(parts) != 3:
+            return await cq.answer("⚠ Invalid", show_alert=True)
+        _, gid, cell = parts
+        try:
+            ci = int(cell)
+        except:
+            return await cq.answer("⚠ Invalid cell", show_alert=True)
+        return await handle_single_press(client, cq, gid, ci)
+
+    # single-player cashout
+    if data.startswith("mcash:"):
+        # mcash:<game_id>
+        parts = data.split(":")
+        if len(parts) != 2:
+            return await cq.answer("⚠ Invalid", show_alert=True)
+        _, gid = parts
+        return await handle_single_cashout(client, cq, gid)
+
+    # multiplayer challenge accept/reject/size
+    if data.startswith("mch:rej:"):
+        cid = data.split(":")[2]
+        return await mch_reject(client, cq, cid)
+    if data.startswith("mch:acc:"):
+        cid = data.split(":")[2]
+        return await mch_accept(client, cq, cid)
+    if data.startswith("mch:size:"):
+        # mch:size:<cid>:<grid>
+        parts = data.split(":")
+        if len(parts) != 4:
+            return await cq.answer("⚠ Invalid", show_alert=True)
+        cid = parts[2]; grid = int(parts[3])
+        return await mch_size_selected(client, cq, cid, grid)
+
+    # multiplayer gameplay
+    if data.startswith("mpplay:"):
+        # mpplay:<cid>:<cell>
+        parts = data.split(":")
+        if len(parts) != 3:
+            return await cq.answer("⚠ Invalid", show_alert=True)
+        cid = parts[1]; cell = int(parts[2])
+        return await handle_mp_play(client, cq, cid, cell)
+
+    if data.startswith("mprefresh:"):
+        cid = data.split(":")[1]
+        return await handle_mp_refresh(client, cq, cid)
+
+    # fallback
+    try:
+        return await cq.answer("⚠ Unknown or expired button", show_alert=True)
+    except:
+        pass
