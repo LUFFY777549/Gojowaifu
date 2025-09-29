@@ -5,7 +5,7 @@ import math
 from datetime import datetime, timedelta
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from TEAMZYRO import ZYRO as bot, user_collection, mines_collection, multi_collection, txn_collection
+from TEAMZYRO import ZYRO as bot, user_collection 
 
 # ---------------- Helpers ---------------- #
 async def get_balance(uid: int) -> int:
