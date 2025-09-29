@@ -71,6 +71,7 @@ group_collection = db["groups"]
 waifu_collection = db["waifus"]
 mines_collection = db["mines_games"]
 multi_collection = db["multi_mines"]
+txn_collection = db["transactions"]
 
 # -------------------------- GLOBAL VARIABLES ----------------------------
 app = ZYRO
