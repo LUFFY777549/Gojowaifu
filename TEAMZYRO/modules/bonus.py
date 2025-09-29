@@ -12,15 +12,17 @@ WEEKLY_COINS = 1500
 # /bonus command
 @bot.on_message(filters.command("bonus"))
 async def bonus_menu(_, message: t.Message):
-    uid = str(uuid.uuid4())  # unique session ID for buttons
     keyboard = InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("🎁 Daily Claim", callback_data=f"bonus:{uid}:daily")],
-            [InlineKeyboardButton("📅 Weekly Claim", callback_data=f"bonus:{uid}:weekly")],
-            [InlineKeyboardButton("❌ Close", callback_data=f"bonus:{uid}:close")]
+            [InlineKeyboardButton("🎁 Daily Claim", callback_data="daily_claim")],
+            [InlineKeyboardButton("📅 Weekly Claim", callback_data="weekly_claim")],
+            [InlineKeyboardButton("❌ Close", callback_data="close_bonus")]
         ]
     )
-    await message.reply_text("✨ ʙᴏɴᴜꜱ ᴍᴇɴᴜ ✨\n\nChoose one of the options below:", reply_markup=keyboard)
+    await message.reply_text(
+        "✨ ʙᴏɴᴜꜱ ᴍᴇɴᴜ ✨\n\nChoose one of the options below:",
+        reply_markup=keyboard
+    )
 
 
 # Callback only for bonus buttons
