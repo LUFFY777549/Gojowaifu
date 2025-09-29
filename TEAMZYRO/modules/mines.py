@@ -5,7 +5,7 @@ import math
 from datetime import datetime, timedelta
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from TEAMZYRO import ZYRO as bot, user_collection 
+from TEAMZYRO import ZYRO as bot, user_collection, mines_collection, multi_collection, txn_collection 
 
 # ---------------- Helpers ---------------- #
 async def get_balance(uid: int) -> int:
@@ -55,7 +55,7 @@ def build_multiplayer_kb(grid:int, opened:set, cid:str):
     return InlineKeyboardMarkup(rows)
 
 # ---------------- Step 1: /mines <amount> -> show size buttons ---------------- #
-@bot.on_message(filters.command("mines") & ~filters.edited)
+@bot.on_message(filters.command("mines")
 async def mines_menu(client, message):
     args = message.text.split()
     user_id = message.from_user.id
@@ -236,7 +236,7 @@ async def handle_single_cashout(client, cq, game_id):
             pass
 
 # ---------------- Multiplayer challenge: /mchallenge <bet> @user or reply ---------------- #
-@bot.on_message(filters.command("mchallenge") & ~filters.edited)
+@bot.on_message(filters.command("mchallenge")
 async def mchallenge_cmd(client, message):
     args = message.text.split()
     challenger = message.from_user
