@@ -44,7 +44,7 @@ async def balance(client: Client, message: Message):
     )
 
 # ---------------- PAY COMMAND (Improved) ---------------- #
-@ app.on_message(filters.command("pay") & ~filters.edited)
+@app.on_message(filters.command("pay"))
 async def pay_command(client: Client, message: Message):
     sender_id = message.from_user.id
     args = message.text.split()
@@ -224,3 +224,4 @@ async def pay_callback(client: Client, cq):
             return await cq.answer("⚠️ Something went wrong.", show_alert=True)
         except:
             return
+
