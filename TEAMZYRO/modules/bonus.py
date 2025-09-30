@@ -3,11 +3,11 @@ from datetime import datetime, timedelta
 from pyrogram import Client, filters, types as t
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from TEAMZYRO import ZYRO as bot, user_collection
-import uuid
 
 # Bonus amounts
 DAILY_COINS = 100
 WEEKLY_COINS = 1500
+
 
 # /bonus command
 @bot.on_message(filters.command("bonus"))
@@ -47,9 +47,9 @@ async def bonus_handler(_, query: t.CallbackQuery):
             remaining = timedelta(days=1) - (datetime.utcnow() - last_daily)
             hours, remainder = divmod(int(remaining.total_seconds()), 3600)
             minutes, seconds = divmod(remainder, 60)
-            return await query.answer(
-                f"⏳ Already claimed! Next in {hours}h {minutes}m {seconds}s",
-                show_alert=True
+            await query.answer("Already claimed ⏳", show_alert=True)
+            return await query.message.edit_text(
+                f"⏳ Daily already claimed!\n\nNext bonus in {hours}h {minutes}m {seconds}s"
             )
 
         await user_collection.update_one(
@@ -60,9 +60,9 @@ async def bonus_handler(_, query: t.CallbackQuery):
         updated = await user_collection.find_one({"id": user_id})
         balance = int(updated.get("balance", 0))
 
-        return await query.answer(
-            f"✅ Daily Bonus claimed!\n💰 +{DAILY_COINS} coins\n\n🔹 Balance: {balance}",
-            show_alert=True
+        await query.answer("✅ Claimed", show_alert=False)
+        return await query.message.edit_text(
+            f"✅ Daily Bonus claimed!\n\n💰 +{DAILY_COINS} coins\n🔹 Balance: {balance}"
         )
 
     # WEEKLY
@@ -73,9 +73,9 @@ async def bonus_handler(_, query: t.CallbackQuery):
             days, remainder = divmod(int(remaining.total_seconds()), 86400)
             hours, remainder = divmod(remainder, 3600)
             minutes, seconds = divmod(remainder, 60)
-            return await query.answer(
-                f"⏳ Already claimed! Next in {days}d {hours}h {minutes}m",
-                show_alert=True
+            await query.answer("Already claimed ⏳", show_alert=True)
+            return await query.message.edit_text(
+                f"⏳ Weekly already claimed!\n\nNext bonus in {days}d {hours}h {minutes}m"
             )
 
         await user_collection.update_one(
@@ -86,16 +86,15 @@ async def bonus_handler(_, query: t.CallbackQuery):
         updated = await user_collection.find_one({"id": user_id})
         balance = int(updated.get("balance", 0))
 
-        return await query.answer(
-            f"✅ Weekly Bonus claimed!\n💰 +{WEEKLY_COINS} coins\n\n🔹 Balance: {balance}",
-            show_alert=True
+        await query.answer("✅ Claimed", show_alert=False)
+        return await query.message.edit_text(
+            f"✅ Weekly Bonus claimed!\n\n💰 +{WEEKLY_COINS} coins\n🔹 Balance: {balance}"
         )
 
     # CLOSE
     elif query.data == "close_bonus":
         try:
             await query.message.delete()
+            await query.answer("❌ Closed", show_alert=False)
         except:
-            pass
-        return await query.answer("❌ Closed", show_alert=False)
-        
+            await query.answer("❌ Already closed", show_alert=False)
