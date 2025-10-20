@@ -21,22 +21,22 @@
     },
     "GLOG": {
       "description": "Username or ID of the log channel",
-      "value": "Zlog12",
+      "value": "gojo_waifu",
       "required": true
     },
     "CHARA_CHANNEL_ID": {
       "description": "Username or ID of the character channel",
-      "value": "Zlog12",
+      "value": "gojo_waifu",
       "required": true
     },
     "SUPPORT_CHAT_ID": {
       "description": "ID of the support chat",
-      "value": "-1002309742084",
+      "value": "-1002792716047",
       "required": true
     },
     "MONGO_URL": {
       "description": "MongoDB connection URL",
-      "value": "mongodb+srv://Alisha:Alisha123@cluster0.yqcpftw.mongodb.net/?retryWrites=true&w=majority",
+      "value": "mongodb+srv://Gojowaifu:waifu123@gojowaifu.royysxq.mongodb.net/?retryWrites=true&w=majority&appName=Gojowaifu",
       "required": true
     },
     "PHOTO_URL_1": {
@@ -51,22 +51,22 @@
     },
     "SUPPORT_CHAT": {
       "description": "Support chat URL",
-      "value": "https://t.me/Zyroupdates",
+      "value": "https://t.me/GOJO_NOBITA_II",
       "required": true
     },
     "UPDATE_CHAT": {
       "description": "Update chat URL",
-      "value": "https://t.me/ZyroBotCodes",
+      "value": "https://t.me/GOJO_SUPPORT_GROUP_II",
       "required": true
     },
     "SUDO": {
       "description": "Comma-separated list of sudo user IDs",
-      "value": "7577185215,5749187175",
+      "value": "7553434931",
       "required": true
     },
     "OWNER_ID": {
       "description": "Owner's Telegram user ID",
-      "value": "7073835511",
+      "value": "7553434931",
       "required": true
     }
   },
