@@ -40,6 +40,9 @@ async def bonus_handler(_, query: t.CallbackQuery):
         }
         await user_collection.insert_one(user)
 
+    # Keyboard to persist
+    keyboard = query.message.reply_markup
+
     # DAILY
     if query.data == "daily_claim":
         last_daily = user.get("last_daily_claim")
@@ -48,9 +51,7 @@ async def bonus_handler(_, query: t.CallbackQuery):
             hours, remainder = divmod(int(remaining.total_seconds()), 3600)
             minutes, seconds = divmod(remainder, 60)
             await query.answer("Already claimed ⏳", show_alert=True)
-            return await query.message.edit_text(
-                f"⏳ Daily already claimed!\n\nNext bonus in {hours}h {minutes}m {seconds}s"
-            )
+            return
 
         await user_collection.update_one(
             {"id": user_id},
@@ -60,9 +61,10 @@ async def bonus_handler(_, query: t.CallbackQuery):
         updated = await user_collection.find_one({"id": user_id})
         balance = int(updated.get("balance", 0))
 
-        await query.answer("✅ Claimed", show_alert=False)
-        return await query.message.edit_text(
-            f"✅ Daily Bonus claimed!\n\n💰 +{DAILY_COINS} coins\n🔹 Balance: {balance}"
+        await query.answer("✅ Claimed", show_alert=True)
+        await query.message.edit_text(
+            f"✅ Daily Bonus claimed!\n\n💰 +{DAILY_COINS} coins\n🔹 Balance: {balance}",
+            reply_markup=keyboard  # keep buttons if needed
         )
 
     # WEEKLY
@@ -74,9 +76,7 @@ async def bonus_handler(_, query: t.CallbackQuery):
             hours, remainder = divmod(remainder, 3600)
             minutes, seconds = divmod(remainder, 60)
             await query.answer("Already claimed ⏳", show_alert=True)
-            return await query.message.edit_text(
-                f"⏳ Weekly already claimed!\n\nNext bonus in {days}d {hours}h {minutes}m"
-            )
+            return
 
         await user_collection.update_one(
             {"id": user_id},
@@ -86,9 +86,10 @@ async def bonus_handler(_, query: t.CallbackQuery):
         updated = await user_collection.find_one({"id": user_id})
         balance = int(updated.get("balance", 0))
 
-        await query.answer("✅ Claimed", show_alert=False)
-        return await query.message.edit_text(
-            f"✅ Weekly Bonus claimed!\n\n💰 +{WEEKLY_COINS} coins\n🔹 Balance: {balance}"
+        await query.answer("✅ Claimed", show_alert=True)
+        await query.message.edit_text(
+            f"✅ Weekly Bonus claimed!\n\n💰 +{WEEKLY_COINS} coins\n🔹 Balance: {balance}",
+            reply_markup=keyboard
         )
 
     # CLOSE
