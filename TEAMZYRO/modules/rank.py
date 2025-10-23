@@ -5,7 +5,7 @@ import asyncio
 import html
 from TEAMZYRO import app, user_collection, top_global_groups_collection
 
-PHOTO_URL = ["https://files.catbox.moe/9j8e6b.jpg"]
+PHOTO_URL = ["https://files.catbox.moe/9bhirj.jpg"]
 
 # ----------------- Helper Functions ----------------- #
 def build_user_leaderboard(data):
