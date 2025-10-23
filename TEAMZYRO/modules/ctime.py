@@ -1,6 +1,6 @@
 from pyrogram import Client, filters
 from pyrogram.enums import ChatMemberStatus
-from TEAMZYRO import group_user_totals_collection, OWNER_ID, app, x
+from TEAMZYRO import group_user_totals_collection, OWNER_ID, app
 
 async def is_admin(client: Client, chat_id: int, user_id: int) -> bool:
     """
