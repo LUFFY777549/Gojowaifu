@@ -27,7 +27,7 @@ def LOGGER(name: str) -> logging.Logger:
 api_id = os.getenv("API_ID", "21218274")
 api_hash = os.getenv("API_HASH", "3474a18b61897c672d315fb330edb213")
 TOKEN = os.getenv("TOKEN", "7442709602:AAH2MLkbFmtGjeBOSIN8DOPq8y-o6gfGkIc")
-GLOG = os.getenv("GLOG", "gojo_waifu")
+GLOG = os.getenv("GLOG", "-1002946070634")
 CHARA_CHANNEL_ID = os.getenv("CHARA_CHANNEL_ID", "-1002946070634")
 SUPPORT_CHAT_ID = os.getenv("SUPPORT_CHAT_ID", "-1002691911300")
 mongo_url = os.getenv("MONGO_URL", "mongodb+srv://sufyan532011:5042@auctionbot.5ms20.mongodb.net/?retryWrites=true&w=majority&appName=AuctionBot")
