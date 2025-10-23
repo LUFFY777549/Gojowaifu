@@ -24,11 +24,11 @@ async def coin_flip(client, message):
     user_id = message.from_user.id
     args = message.text.split()
 
-    # Usage check
+    # ✅ Usage check
     if len(args) != 3:
         return await message.reply_photo(
             random.choice(TOSS_IMAGES),
-            caption="⚡ ᴜsᴀɢᴇ: `/flip <ᴀᴍᴏᴜɴᴛ> <head/tail>`"
+            caption="⚡ ᴜsᴀɢᴇ: `/flip <amount> <head/tail>`"
         )
 
     try:
@@ -52,36 +52,29 @@ async def coin_flip(client, message):
             caption="❌ ᴀᴍᴏᴜɴᴛ ᴍᴜsᴛ ʙᴇ ᴘᴏsɪᴛɪᴠᴇ!"
         )
 
-    # ✅ Fetch user balance with same field ("id")
+    # ✅ Fetch or create user
     user = await user_collection.find_one({"id": user_id})
     if not user:
         user = {"id": user_id, "balance": 1000}
         await user_collection.insert_one(user)
 
-    balance = user["balance"]
-
+    balance = user.get("balance", 0)
     if balance < amount:
         return await message.reply_photo(
             random.choice(TOSS_IMAGES),
             caption="❌ ʏᴏᴜ ᴅᴏɴ'ᴛ ʜᴀᴠᴇ ᴇɴᴏᴜɢʜ ʙᴀʟᴀɴᴄᴇ!"
         )
 
-    # Deduct bet first
-    await user_collection.update_one(
-        {"id": user_id},
-        {"$inc": {"balance": -amount}}
-    )
+    # ✅ Deduct bet first
+    await user_collection.update_one({"id": user_id}, {"$inc": {"balance": -amount}})
 
-    # Toss result
+    # ✅ Toss result
     result = random.choice(["head", "tail"])
     video_url = random.choice(TOSS_VIDEOS)
 
     if choice == result:
         win_amount = amount * 2
-        await user_collection.update_one(
-            {"id": user_id},
-            {"$inc": {"balance": win_amount}}
-        )
+        await user_collection.update_one({"id": user_id}, {"$inc": {"balance": win_amount}})
         final_text = (
             f"🪙 ᴛᴏss ʀᴇsᴜʟᴛ: **{result.upper()}** 🎉\n"
             f"✅ ʏᴏᴜ ᴡᴏɴ **+{amount}** ᴄᴏɪɴs!"
@@ -92,14 +85,14 @@ async def coin_flip(client, message):
             f"❌ ʏᴏᴜ ʟᴏsᴛ **-{amount}** ᴄᴏɪɴs."
         )
 
-    # Fetch updated balance
+    # ✅ Fetch updated balance
     updated_user = await user_collection.find_one({"id": user_id})
-    final_balance = updated_user["balance"]
+    final_balance = updated_user.get("balance", 0)
 
     caption = f"{final_text}\n\n💰 ᴄᴜʀʀᴇɴᴛ ʙᴀʟᴀɴᴄᴇ: **{final_balance}**"
 
-    # Send video with spoiler
+    # ✅ Send video with spoiler
     await message.reply_video(
-        video_url,
+        video=video_url,
         caption=f"||{caption}||"
-        )
+    )
