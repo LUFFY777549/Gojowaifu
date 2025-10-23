@@ -1,28 +1,11 @@
 from TEAMZYRO import *
 import random
 import asyncio
+import time
 from telegram import Update
 from telegram.ext import CallbackContext
 
 log = "-1002946070634"
-
-rarity_map = {
-    1: "⚪️ Low",
-    2: "🟠 Medium",
-    3: "🔴 High",
-    4: "🎩 Special Edition",
-    5: "🪽 Elite Edition",
-    6: "🪐 Exclusive",
-    7: "💞 Valentine",
-    8: "🎃 Halloween",
-    9: "❄️ Winter",
-    10: "🏖 Summer",
-    11: "🎗 Royal",
-    12: "💸 Luxury Edition",
-    13: "🍃 echhi",
-    14: "🌧️ Rainy Edition",
-    15: "🎍 Festival"
-}
 
 RARITY_WEIGHTS = {
     "⚪️ Low": (40, True),
@@ -46,7 +29,6 @@ async def delete_message(chat_id, message_id, context):
     except Exception as e:
         print(f"Error deleting message: {e}")
 
-
 async def send_image(update: Update, context: CallbackContext) -> None:
     chat_id = update.effective_chat.id
 
@@ -57,11 +39,14 @@ async def send_image(update: Update, context: CallbackContext) -> None:
         await context.bot.send_message(chat_id, "No characters found in the database.")
         return
 
-    # Map rarity ID to string
+    # Map rarity properly
     for char in all_characters:
-        rid = char.get("rarity")
-        if rid in rarity_map:
+        # priority to integer stored rarity_number from upload.py
+        rid = char.get("rarity_number")  
+        if rid and isinstance(rid, int) and rid in rarity_map:
             char["rarity_str"] = rarity_map[rid]
+        elif isinstance(char.get("rarity"), str):
+            char["rarity_str"] = char["rarity"]
         else:
             char["rarity_str"] = "Unknown"
 
