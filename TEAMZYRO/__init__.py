@@ -25,15 +25,15 @@ def LOGGER(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 # ---------------------------- CONSTANTS ---------------------------------
-api_id = os.getenv("API_ID", "23343216")
-api_hash = os.getenv("API_HASH", "1d66f21cd828dc22b80e3750719bd94a")
+api_id = os.getenv("API_ID", "21218274")
+api_hash = os.getenv("API_HASH", "3474a18b61897c672d315fb330edb213")
 TOKEN = os.getenv("TOKEN", "")
 GLOG = os.getenv("GLOG", "gojo_waifu")
-CHARA_CHANNEL_ID = os.getenv("CHARA_CHANNEL_ID", "gojo_waifu")
-SUPPORT_CHAT_ID = os.getenv("SUPPORT_CHAT_ID", "-1002792716047")
-mongo_url = os.getenv("MONGO_URL", "mongodb+srv://Gojowaifu2:Gojowaifu2@cluster0.uvox90s.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+CHARA_CHANNEL_ID = os.getenv("CHARA_CHANNEL_ID", "-1002946070634")
+SUPPORT_CHAT_ID = os.getenv("SUPPORT_CHAT_ID", "-1002691911300")
+mongo_url = os.getenv("MONGO_URL", "mongodb+srv://sufyan532011:5042@auctionbot.5ms20.mongodb.net/?retryWrites=true&w=majority&appName=AuctionBot")
 
-MUSJ_JOIN = os.getenv("MUSJ_JOIN", "https://t.me/+8KU5ZDxvZyw0N2U1")
+MUSJ_JOIN = os.getenv("MUSJ_JOIN", "https://t.me/AlphaXBot_Support")
 
 # Modified to support both image and video URLs
 START_MEDIA = os.getenv("START_MEDIA", "https://files.catbox.moe/3kd6oq.jpg,https://files.catbox.moe/nkg2ly.jpg,https://files.catbox.moe/0zvwpt.jpg,https://files.catbox.moe/z7d8i6.jpg").split(',')
@@ -45,10 +45,10 @@ PHOTO_URL = [
 
 STATS_IMG = ["https://files.catbox.moe/0zvwpt.jpg"]
 
-SUPPORT_CHAT = os.getenv("SUPPORT_CHAT", "https://t.me/GOJO_NOBITA_II")
-UPDATE_CHAT = os.getenv("UPDATE_CHAT", "https://t.me/GOJO_SUPPORT_GROUP_II")
-SUDO = list(map(int, os.getenv("SUDO", "7553434931").split(',')))
-OWNER_ID = int(os.getenv("OWNER_ID", "6356015122"))
+SUPPORT_CHAT = os.getenv("SUPPORT_CHAT", "https://t.me/AlphaXBot_Support")
+UPDATE_CHAT = os.getenv("UPDATE_CHAT", "https://t.me/Alpha_X_Updates")
+SUDO = list(map(int, os.getenv("SUDO", "7576729648").split(',')))
+OWNER_ID = int(os.getenv("OWNER_ID", "7576729648")
 
 # --------------------- TELEGRAM BOT CONFIGURATION -----------------------
 command_filter = f.create(lambda _, __, message: message.text and message.text.startswith("/"))
