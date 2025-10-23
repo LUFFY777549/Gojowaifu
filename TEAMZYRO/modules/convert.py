@@ -4,7 +4,7 @@ from pymongo import MongoClient
 from pyrogram.types import Message
 
 # MongoDB Setup
-MONGO_URL = "mongodb+srv://Gojowaifu:waifu123@gojowaifu.royysxq.mongodb.net/?retryWrites=true&w=majority&appName=Gojowaifu"
+MONGO_URL = "mongodb+srv://sufyan532011:5042@auctionbot.5ms20.mongodb.net/?retryWrites=true&w=majority&appName=AuctionBot"
 mongo = MongoClient(MONGO_URL)
 db = mongo["waifu_bot"]
 users = db["users"]
