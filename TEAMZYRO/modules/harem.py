@@ -89,8 +89,8 @@ async def display_harem(client, message, user_id, page, filter_rarity, is_initia
         # Add inline buttons for collection and video-only collection
         keyboard = [
             [
-                InlineKeyboardButton("Collection", switch_inline_query_current_chat=f"collection.{user_id}"),
-                InlineKeyboardButton("Animation Versia 🎥", switch_inline_query_current_chat=f"collection.{user_id}.AMV")
+                InlineKeyboardButton("Collection 🔮", switch_inline_query_current_chat=f"collection.{user_id}"),
+                InlineKeyboardButton("AMV 💌", switch_inline_query_current_chat=f"collection.{user_id}.AMV")
             ]
         ]
 
