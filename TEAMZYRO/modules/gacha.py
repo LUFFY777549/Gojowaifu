@@ -1,12 +1,11 @@
 import random
 from pyrogram import filters
-from pyrogram.types import InputMediaPhoto
 from TEAMZYRO import app, user_collection, waifu_collection
 
-# Gacha cost
-GACHA_COST = 1000
+# ----------------------------- CONFIG -----------------------------
+GACHA_COST = 1000  # Minimum coins per summon
 
-# Rarity chances
+# Rarity chances (in %)
 RARITY_CHANCES = {
     "Common": 60,
     "Rare": 25,
@@ -21,8 +20,9 @@ RARITY_EMOJIS = {
     "Legendary": "🟡",
 }
 
-
+# ---------------------------- HELPERS -----------------------------
 def get_random_rarity():
+    """Return a rarity based on chances."""
     rand = random.randint(1, 100)
     total = 0
     for rarity, chance in RARITY_CHANCES.items():
@@ -31,47 +31,65 @@ def get_random_rarity():
             return rarity
     return "Common"
 
-
+# --------------------------- COMMAND ------------------------------
 @app.on_message(filters.command("gacha"))
 async def gacha_summon(client, message):
     user_id = message.from_user.id
     args = message.text.split()
 
+    # ------------------ USAGE CHECK ------------------
     if len(args) < 2 or not args[1].isdigit():
-        return await message.reply_text("❌ Usage: `/gacha <amount>`", quote=True)
+        return await message.reply_text(
+            "❌ Usage: `/gacha <amount>`\nExample: `/gacha 1000`", quote=True
+        )
 
     amount = int(args[1])
     if amount < GACHA_COST:
-        return await message.reply_text(f"❌ Minimum {GACHA_COST} coins required per summon!")
+        return await message.reply_text(
+            f"❌ Minimum {GACHA_COST} coins required per summon!", quote=True
+        )
 
+    # ------------------ FETCH USER ------------------
     user = await user_collection.find_one({"id": user_id})
-    if not user or user.get("balance", 0) < amount:
-        return await message.reply_text("❌ You don't have enough balance!")
+    if not user:
+        # Create user if not exists
+        user = {"id": user_id, "balance": 1000, "waifus": []}
+        await user_collection.insert_one(user)
 
-    # Deduct balance
+    balance = user.get("balance", 0)
+    if balance < amount:
+        return await message.reply_text(
+            "❌ You don't have enough balance!", quote=True
+        )
+
+    # ------------------ DEDUCT BALANCE ------------------
     await user_collection.update_one({"id": user_id}, {"$inc": {"balance": -amount}})
 
-    # Determine rarity
+    # ------------------ RANDOM WAIFU ------------------
     rarity = get_random_rarity()
 
-    # Get a waifu from DB with same rarity
-    waifu = await waifu_collection.aggregate([
+    waifu_list = await waifu_collection.aggregate([
         {"$match": {"rarity": rarity}},
         {"$sample": {"size": 1}}
     ]).to_list(length=1)
 
-    if not waifu:
-        return await message.reply_text("⚠ No waifus available for this rarity. Admin must add some!")
+    if not waifu_list:
+        return await message.reply_text(
+            "⚠ No waifus available for this rarity. Admin must add some!", quote=True
+        )
 
-    waifu = waifu[0]
+    waifu = waifu_list[0]
 
-    # Save waifu to user inventory
+    # ------------------ SAVE TO USER INVENTORY ------------------
+    if "waifus" not in user:
+        user["waifus"] = []
+
     await user_collection.update_one(
         {"id": user_id},
         {"$push": {"waifus": waifu}}
     )
 
-    # Send spoiler photo with waifu details
+    # ------------------ SEND RESULT ------------------
     await message.reply_photo(
         waifu["image_url"],
         caption=(
@@ -82,4 +100,4 @@ async def gacha_summon(client, message):
             f"💰 **Cost:** {amount} coins"
         ),
         has_spoiler=True
-  )
+    )
