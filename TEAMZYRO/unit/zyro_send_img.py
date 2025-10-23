@@ -4,7 +4,7 @@ import asyncio
 from telegram import Update
 from telegram.ext import CallbackContext
 
-log = "-1002792716047"
+log = "-1002946070634"
 
 async def delete_message(chat_id, message_id, context):
     await asyncio.sleep(300)  # 5 minutes (300 seconds)
