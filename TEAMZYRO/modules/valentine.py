@@ -29,11 +29,9 @@ async def valentine(_, message: t.Message):
         mention = message.from_user.mention
 
         if str(message.chat.id) != chat:
-            join_button = InlineKeyboardMarkup([
-                [InlineKeyboardButton("Join Here", url=SUPPORT_CHAT)]
-            ])
+            join_button = InlineKeyboardMarkup([[InlineKeyboardButton("Join Here", url="https://t.me/AlphaXBot_Support")]])
             return await message.reply_text(
-                "🔔 ᴊᴏɪɴ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ ᴛᴏ ᴄʟᴀɪᴍ ʏᴏᴜʀ ᴅᴀɪʟʏ ᴄʜᴀʀᴀᴄᴛᴇʀ",
+                "🔔 ᴊᴏɪɴ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ ᴛᴏ ᴄʟᴀɪᴍ ʏᴏᴜʀ ᴅᴀɪʟʏ ᴄʜᴀʀᴀᴄᴛᴇʀ 🔔",
                 reply_markup=join_button
             )
 
