@@ -5,7 +5,8 @@ import time
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from TEAMZYRO import *
-from TEAMZYRO.unit.zyro_help import HELP_DATA  
+from TEAMZYRO.unit.zyro_help import HELP_DATA
+from pyrogram.errors import PeerIdInvalid
 
 # 🔹 Function to Calculate Uptime
 START_TIME = time.time()
@@ -23,7 +24,6 @@ async def generate_start_message(client, message):
     ping = round(time.time() - message.date.timestamp(), 2)
     uptime = get_uptime()
 
-    
     caption = f"""🍃 ɢʀᴇᴇᴛɪɴɢs, ɪ'ᴍ {bot_name} 🫧, ɴɪᴄᴇ ᴛᴏ ᴍᴇᴇᴛ ʏᴏᴜ!
 ╭━━━━━━━╾❁✦❁╼━━━━━━━╮
 ⟡ ɪ ᴀᴍ ʏᴏᴜʀ ᴡᴀɪғᴜ ɢᴇɴɪᴇ!  
@@ -38,12 +38,12 @@ async def generate_start_message(client, message):
 
     buttons = [
         [InlineKeyboardButton("⋆ᴀᴅᴅ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ⋆", url=f"https://t.me/{bot_user.username}?startgroup=true")],
-        [InlineKeyboardButton("❍sᴜᴘᴘᴏʀᴛ❍", url="https://t.me/GOJO_NOBITA_II"), 
-         InlineKeyboardButton("❍ᴄʜᴀɴɴᴇʟ❍", url="https://t.me/GOJO_SUPPORT_GROUP_II")],
+        [InlineKeyboardButton("❍sᴜᴘᴘᴏʀᴛ❍", url="https://t.me/AlphaBot_Support"),
+         InlineKeyboardButton("❍ᴄʜᴀɴɴᴇʟ❍", url="https://t.me/Alpha_X_Updates")],
         [InlineKeyboardButton("⋆ʜᴇʟᴘ⋆", callback_data="open_help")],
-        [InlineKeyboardButton("✦ʟᴏʀᴅ✦", url="http://t.me/II_YOUR_GOJO_ll")]
+        [InlineKeyboardButton("✦ʟᴏʀᴅ✦", url="http://t.me/Uzumaki_X_Naruto_6")]
     ]
-    
+
     return caption, buttons
 
 # 🔹 Function to Generate Group Start Message & Buttons
@@ -53,7 +53,7 @@ async def generate_group_start_message(client):
     buttons = [
         [
             InlineKeyboardButton("◦ᴀᴅᴅ ᴍᴇ◦", url=f"https://t.me/{bot_user.username}?startgroup=true"),
-            InlineKeyboardButton("◦sᴜᴘᴘᴏʀᴛ◦", url="https://t.me/GOJO_NOBITA_II"),
+            InlineKeyboardButton("◦sᴜᴘᴘᴏʀᴛ◦", url="https://t.me/AlphaXBot_Support"),
         ]
     ]
     return caption, buttons
@@ -61,10 +61,8 @@ async def generate_group_start_message(client):
 # 🔹 Private Start Command Handler
 @app.on_message(filters.command("start") & filters.private)
 async def start_private_command(client, message):
-    # Check if user exists in user_collection
+    # Save user data only if not exists
     existing_user = await user_collection.find_one({"id": message.from_user.id})
-    
-    # Save user data only if they don't exist in the collection
     if not existing_user:
         user_data = {
             "id": message.from_user.id,
@@ -77,24 +75,31 @@ async def start_private_command(client, message):
 
     caption, buttons = await generate_start_message(client, message)
     media = random.choice(START_MEDIA)
-    
-    await app.send_message(
-        chat_id=GLOG,
-        text=f"{message.from_user.mention} ᴊᴜsᴛ sᴛᴀʀᴛᴇᴅ ᴛʜᴇ ʙᴏᴛ ᴛᴏ ᴄʜᴇᴄᴋ <b>sᴜᴅᴏʟɪsᴛ</b>.\n\n<b>ᴜsᴇʀ ɪᴅ :</b> <code>{message.from_user.id}</code>\n<b>ᴜsᴇʀɴᴀᴍᴇ :</b> @{message.from_user.username}",
-    )
-    
-    # Check if media is image or video based on extension
+
+    # 🔧 Safe Logging Message
+    try:
+        if GLOG:
+            await app.send_message(
+                chat_id=int(GLOG),
+                text=f"{message.from_user.mention} ᴊᴜsᴛ sᴛᴀʀᴛᴇᴅ ᴛʜᴇ ʙᴏᴛ ᴛᴏ ᴄʜᴇᴄᴋ <b>sᴜᴅᴏʟɪsᴛ</b>.\n\n<b>ᴜsᴇʀ ɪᴅ :</b> <code>{message.from_user.id}</code>\n<b>ᴜsᴇʀɴᴀᴍᴇ :</b> @{message.from_user.username}",
+            )
+    except PeerIdInvalid:
+        print(f"[⚠️ WARNING] GLOG ID {GLOG} is invalid or bot not in that chat. Skipping log message.")
+    except Exception as e:
+        print(f"[❌ ERROR] Failed to send log message: {e}")
+
+    # 🔹 Send Start Image/Video
     if media.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
         await message.reply_photo(
             photo=media,
             caption=caption,
-            reply_markup=InlineKeyboardMarkup(buttons)  # Pass InlineKeyboardMarkup directly
+            reply_markup=InlineKeyboardMarkup(buttons)
         )
     else:
         await message.reply_video(
             video=media,
             caption=caption,
-            reply_markup=InlineKeyboardMarkup(buttons)  # Pass InlineKeyboardMarkup directly
+            reply_markup=InlineKeyboardMarkup(buttons)
         )
 
 # 🔹 Group Start Command Handler
@@ -102,70 +107,60 @@ async def start_private_command(client, message):
 async def start_group_command(client, message):
     caption, buttons = await generate_group_start_message(client)
     media = random.choice(START_MEDIA)
-    
-    # Check if media is image or video based on extension
+
     if media.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
         await message.reply_photo(
             photo=media,
             caption=caption,
-            reply_markup=InlineKeyboardMarkup(buttons)  # Pass InlineKeyboardMarkup directly
+            reply_markup=InlineKeyboardMarkup(buttons)
         )
     else:
         await message.reply_video(
             video=media,
             caption=caption,
-            reply_markup=InlineKeyboardMarkup(buttons)  # Pass InlineKeyboardMarkup directly
+            reply_markup=InlineKeyboardMarkup(buttons)
         )
 
-# 🔹 Function to Find Help Modules
+# 🔹 Help Menu System
 def find_help_modules():
     buttons = []
-    
     for module_name, module_data in HELP_DATA.items():
         button_name = module_data.get("HELP_NAME", "Unknown")
         buttons.append(InlineKeyboardButton(button_name, callback_data=f"help_{module_name}"))
+    return [buttons[i:i+3] for i in range(0, len(buttons), 3)]
 
-    return [buttons[i : i + 3] for i in range(0, len(buttons), 3)]
-
-# 🔹 Help Button Click Handler
 @app.on_callback_query(filters.regex("^open_help$"))
 async def show_help_menu(client, query: CallbackQuery):
     time.sleep(1)
     buttons = find_help_modules()
     buttons.append([InlineKeyboardButton("⬅ Back", callback_data="back_to_home")])
-
     await query.message.edit_text(
-        """*ᴄʜᴏᴏsᴇ ᴛʜᴇ ᴄᴀᴛᴇɢᴏʀʏ ғᴏʀ ᴡʜɪᴄʜ ʏᴏᴜ ᴡᴀɴɴᴀ ɢᴇᴛ ʜᴇʟᴩ.
+        """*ᴄʜᴏᴏsᴇ ᴛʜᴇ ᴄᴀᴛᴇɢᴏʀʏ ғᴏʀ ᴡʜɪᴄʜ ʏᴏᴜ ᴡᴀɴɴᴀ ɢᴇᴛ ʜᴇʟᴩ.*
 
 ᴀʟʟ ᴄᴏᴍᴍᴀɴᴅs ᴄᴀɴ ʙᴇ ᴜsᴇᴅ ᴡɪᴛʜ : /""",
-        reply_markup=InlineKeyboardMarkup(buttons)  # Pass InlineKeyboardMarkup directly
+        reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# 🔹 Individual Module Help Handler
 @app.on_callback_query(filters.regex(r"^help_(.+)"))
 async def show_help(client, query: CallbackQuery):
     time.sleep(1)
     module_name = query.data.split("_", 1)[1]
-    
     try:
         module_data = HELP_DATA.get(module_name, {})
         help_text = module_data.get("HELP", "Is module ka koi help nahi hai.")
         buttons = [[InlineKeyboardButton("⬅ Back", callback_data="open_help")]]
-        
         await query.message.edit_text(
             f"**{module_name} Help:**\n\n{help_text}",
-            reply_markup=InlineKeyboardMarkup(buttons)  # Pass InlineKeyboardMarkup directly
+            reply_markup=InlineKeyboardMarkup(buttons)
         )
-    except Exception as e:
+    except Exception:
         await query.answer("Help load karne me error aayi!")
 
-# 🔹 Back to Home
 @app.on_callback_query(filters.regex("^back_to_home$"))
 async def back_to_home(client, query: CallbackQuery):
     time.sleep(1)
     caption, buttons = await generate_start_message(client, query.message)
     await query.message.edit_text(
         caption,
-        reply_markup=InlineKeyboardMarkup(buttons)  # Pass InlineKeyboardMarkup directly
-        )
-
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
