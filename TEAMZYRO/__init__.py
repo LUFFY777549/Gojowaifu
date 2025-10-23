@@ -47,7 +47,7 @@ STATS_IMG = ["https://files.catbox.moe/0zvwpt.jpg"]
 SUPPORT_CHAT = os.getenv("SUPPORT_CHAT", "https://t.me/AlphaXBot_Support")
 UPDATE_CHAT = os.getenv("UPDATE_CHAT", "https://t.me/Alpha_X_Updates")
 SUDO = list(map(int, os.getenv("SUDO", "7576729648").split(',')))
-OWNER_ID = int(os.getenv("OWNER_ID", "7576729648")
+OWNER_ID = int(os.getenv("OWNER_ID", "7576729648"))
 
 # --------------------- TELEGRAM BOT CONFIGURATION -----------------------
 command_filter = f.create(lambda _, __, message: message.text and message.text.startswith("/"))
