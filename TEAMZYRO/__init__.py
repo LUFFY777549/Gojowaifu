@@ -35,14 +35,14 @@ mongo_url = os.getenv("MONGO_URL", "mongodb+srv://sufyan532011:5042@auctionbot.5
 MUSJ_JOIN = os.getenv("MUSJ_JOIN", "https://t.me/AlphaXBot_Support")
 
 # Modified to support both image and video URLs
-START_MEDIA = os.getenv("START_MEDIA", "https://files.catbox.moe/3kd6oq.jpg,https://files.catbox.moe/nkg2ly.jpg,https://files.catbox.moe/0zvwpt.jpg,https://files.catbox.moe/z7d8i6.jpg").split(',')
+START_MEDIA = os.getenv("START_MEDIA", "https://files.catbox.moe/rrgm0c.jpg")
 
 PHOTO_URL = [
-    os.getenv("PHOTO_URL_1", "https://files.catbox.moe/f5njbm.jpg"),
-    os.getenv("PHOTO_URL_2", "https://files.catbox.moe/3saw6n.jpg")
+    os.getenv("PHOTO_URL_1", "https://files.catbox.moe/rrgm0c.jpg"),
+    os.getenv("PHOTO_URL_2", "https://files.catbox.moe/rrgm0c.jpg")
 ]
 
-STATS_IMG = ["https://files.catbox.moe/0zvwpt.jpg"]
+STATS_IMG = ["https://files.catbox.moe/rrgm0c.jpg"]
 
 SUPPORT_CHAT = os.getenv("SUPPORT_CHAT", "https://t.me/AlphaXBot_Support")
 UPDATE_CHAT = os.getenv("UPDATE_CHAT", "https://t.me/Alpha_X_Updates")
