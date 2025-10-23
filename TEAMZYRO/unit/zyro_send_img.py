@@ -31,12 +31,12 @@ RARITY_WEIGHTS = {
     "🎩 Special Edition": (8, True),
     "🪽 Elite Edition": (6, True),
     "🪐 Exclusive": (4, True),
-    "💞 Valentine": (2, False),
-    "🎃 Halloween": (2, False),
-    "❄️ Winter": (1.5, False),
-    "🏖 Summer": (1.2, False),
-    "🎗 Royal": (0.5, False),
-    "💸 Luxury Edition": (0.5, False)
+    "💞 Valentine": (2, True),
+    "🎃 Halloween": (2, True),
+    "❄️ Winter": (2, True),
+    "🏖 Summer": (2, True),
+    "🎗 Royal": (2, True),
+    "💸 Luxury Edition": (2, True)
 }
 
 async def delete_message(chat_id, message_id, context):
