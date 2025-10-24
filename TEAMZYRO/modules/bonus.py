@@ -1,132 +1,143 @@
 import asyncio
 from datetime import datetime, timedelta
 from pyrogram import Client, filters
-from pyrogram.types import (
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    Message,
-    CallbackQuery
-)
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
 from TEAMZYRO import ZYRO as bot, user_collection
 
-# ----------------- BONUS AMOUNTS -----------------
 DAILY_COINS = 100
 WEEKLY_COINS = 1500
 
 
-# ----------------- MAIN BONUS MENU -----------------
+# ---------------- HELPER: BUTTON BUILDER ---------------- #
+async def build_bonus_keyboard(user_id: int):
+    user = await user_collection.find_one({"id": user_id})
+    now = datetime.utcnow()
+    daily_status = "AVAILABLE"
+    weekly_status = "AVAILABLE"
+
+    if user:
+        last_daily = user.get("last_daily_claim")
+        last_weekly = user.get("last_weekly_claim")
+
+        if last_daily and (now - last_daily) < timedelta(days=1):
+            daily_status = "CLAIMED"
+        if last_weekly and (now - last_weekly) < timedelta(weeks=1):
+            weekly_status = "CLAIMED"
+
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"🎁 Daily ({daily_status})", callback_data="daily_claim")],
+        [InlineKeyboardButton(f"📅 Weekly ({weekly_status})", callback_data="weekly_claim")],
+        [InlineKeyboardButton("❌ Close", callback_data="close_bonus")]
+    ])
+
+
+# ---------------- COMMAND: /bonus ---------------- #
 @bot.on_message(filters.command("bonus"))
 async def bonus_menu(_, message: Message):
-    keyboard = InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("🎁 Daily Claim", callback_data="daily_claim")],
-            [InlineKeyboardButton("📅 Weekly Claim", callback_data="weekly_claim")],
-            [InlineKeyboardButton("❌ Close", callback_data="close_bonus")]
-        ]
-    )
+    user_id = message.from_user.id
+    user = await user_collection.find_one({"id": user_id})
+
+    now = datetime.utcnow()
+    daily_info = "✅ Available now!"
+    weekly_info = "✅ Available now!"
+
+    if user:
+        last_daily = user.get("last_daily_claim")
+        last_weekly = user.get("last_weekly_claim")
+
+        if last_daily and (now - last_daily) < timedelta(days=1):
+            remaining = timedelta(days=1) - (now - last_daily)
+            h, rem = divmod(int(remaining.total_seconds()), 3600)
+            m, _ = divmod(rem, 60)
+            daily_info = f"⏳ Next in {h}h {m}m"
+
+        if last_weekly and (now - last_weekly) < timedelta(weeks=1):
+            remaining = timedelta(weeks=1) - (now - last_weekly)
+            d, rem = divmod(int(remaining.total_seconds()), 86400)
+            h, _ = divmod(rem, 3600)
+            weekly_info = f"⏳ Next in {d}d {h}h"
+
+    keyboard = await build_bonus_keyboard(user_id)
     await message.reply_text(
-        "✨ ʙᴏɴᴜꜱ ᴍᴇɴᴜ ✨\n\nChoose one of the options below:",
+        f"✨ **BONUS MENU** ✨\n\n"
+        f"🎁 Daily Bonus: {daily_info}\n"
+        f"📅 Weekly Bonus: {weekly_info}\n\n"
+        f"Choose one of the options below 👇",
         reply_markup=keyboard
     )
 
 
-# ----------------- BONUS HANDLER -----------------
+# ---------------- CALLBACK HANDLER ---------------- #
 @bot.on_callback_query(filters.regex("^(daily_claim|weekly_claim|close_bonus)$"))
 async def bonus_handler(_, query: CallbackQuery):
     user_id = query.from_user.id
+    data = query.data
+    now = datetime.utcnow()
 
-    # Always answer callback first to prevent "button expired"
-    await query.answer()
+    await query.answer("Processing...", show_alert=False)
 
+    # Get or create user
     user = await user_collection.find_one({"id": user_id})
     if not user:
-        user = {
-            "id": user_id,
-            "balance": 0,
-            "last_daily_claim": None,
-            "last_weekly_claim": None,
-        }
+        user = {"id": user_id, "balance": 0, "last_daily_claim": None, "last_weekly_claim": None}
         await user_collection.insert_one(user)
 
-    # Reusable keyboard
-    keyboard = InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("🎁 Daily Claim", callback_data="daily_claim")],
-            [InlineKeyboardButton("📅 Weekly Claim", callback_data="weekly_claim")],
-            [InlineKeyboardButton("❌ Close", callback_data="close_bonus")]
-        ]
-    )
-
-    # ---------- DAILY CLAIM ----------
-    if query.data == "daily_claim":
+    # ---------------- DAILY CLAIM ---------------- #
+    if data == "daily_claim":
         last_daily = user.get("last_daily_claim")
-        now = datetime.utcnow()
-
         if last_daily and (now - last_daily) < timedelta(days=1):
-            remaining = timedelta(days=1) - (now - last_daily)
-            hours, remainder = divmod(int(remaining.total_seconds()), 3600)
-            minutes, seconds = divmod(remainder, 60)
-            return await query.message.edit_text(
-                f"⏳ You already claimed your daily bonus!\n\nNext bonus in **{hours}h {minutes}m {seconds}s**",
-                reply_markup=keyboard
+            await query.answer("You already claimed today!", show_alert=True)
+        else:
+            await user_collection.update_one(
+                {"id": user_id},
+                {"$inc": {"balance": DAILY_COINS}, "$set": {"last_daily_claim": now}},
+                upsert=True
+            )
+            new_user = await user_collection.find_one({"id": user_id})
+            balance = int(new_user.get("balance", 0))
+
+            await query.message.reply_text(
+                f"🎉 **Congratulations!**\nYou claimed your **Daily Bonus!**\n\n"
+                f"💰 +{DAILY_COINS} Coins\n💎 Total Balance: {balance}"
             )
 
-        await user_collection.update_one(
-            {"id": user_id},
-            {
-                "$inc": {"balance": DAILY_COINS},
-                "$set": {"last_daily_claim": now}
-            },
-            upsert=True
-        )
+        # Update buttons (CLAIMED)
+        new_keyboard = await build_bonus_keyboard(user_id)
+        await query.message.edit_reply_markup(reply_markup=new_keyboard)
+        return
 
-        updated = await user_collection.find_one({"id": user_id})
-        balance = int(updated.get("balance", 0))
-
-        return await query.message.edit_text(
-            f"✅ You successfully claimed your **Daily Bonus!**\n\n💰 +{DAILY_COINS} coins added\n🔹 New Balance: {balance}",
-            reply_markup=keyboard
-        )
-
-    # ---------- WEEKLY CLAIM ----------
-    elif query.data == "weekly_claim":
+    # ---------------- WEEKLY CLAIM ---------------- #
+    if data == "weekly_claim":
         last_weekly = user.get("last_weekly_claim")
-        now = datetime.utcnow()
-
         if last_weekly and (now - last_weekly) < timedelta(weeks=1):
-            remaining = timedelta(weeks=1) - (now - last_weekly)
-            days, remainder = divmod(int(remaining.total_seconds()), 86400)
-            hours, remainder = divmod(remainder, 3600)
-            minutes, seconds = divmod(remainder, 60)
-            return await query.message.edit_text(
-                f"⏳ You already claimed your weekly bonus!\n\nNext bonus in **{days}d {hours}h {minutes}m {seconds}s**",
-                reply_markup=keyboard
+            await query.answer("You already claimed weekly bonus!", show_alert=True)
+        else:
+            await user_collection.update_one(
+                {"id": user_id},
+                {"$inc": {"balance": WEEKLY_COINS}, "$set": {"last_weekly_claim": now}},
+                upsert=True
+            )
+            new_user = await user_collection.find_one({"id": user_id})
+            balance = int(new_user.get("balance", 0))
+
+            await query.message.reply_text(
+                f"🎉 **Congratulations!**\nYou claimed your **Weekly Bonus!**\n\n"
+                f"💰 +{WEEKLY_COINS} Coins\n💎 Total Balance: {balance}"
             )
 
-        await user_collection.update_one(
-            {"id": user_id},
-            {
-                "$inc": {"balance": WEEKLY_COINS},
-                "$set": {"last_weekly_claim": now}
-            },
-            upsert=True
-        )
+        # Update buttons (CLAIMED)
+        new_keyboard = await build_bonus_keyboard(user_id)
+        await query.message.edit_reply_markup(reply_markup=new_keyboard)
+        return
 
-        updated = await user_collection.find_one({"id": user_id})
-        balance = int(updated.get("balance", 0))
-
-        return await query.message.edit_text(
-            f"✅ You successfully claimed your **Weekly Bonus!**\n\n💰 +{WEEKLY_COINS} coins added\n🔹 New Balance: {balance}",
-            reply_markup=keyboard
-        )
-
-    # ---------- CLOSE MENU ----------
-    elif query.data == "close_bonus":
+    # ---------------- CLOSE ---------------- #
+    if data == "close_bonus":
         try:
             await query.message.delete()
-            await query.answer("❌ Closed menu")
+            await query.answer("Closed", show_alert=False)
         except:
-            await query.answer("❌ Already closed")
+            await query.answer("Already closed", show_alert=False)
+        return
 
 
-print("✅ Bonus command loaded successfully.")
+print("✅ Bonus system with status buttons loaded successfully.")
