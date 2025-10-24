@@ -74,9 +74,9 @@ async def bonus_handler(_, query: CallbackQuery):
     data = query.data
     now = datetime.utcnow()
 
-    await query.answer("Processing...", show_alert=False)
+    # Safe answer to prevent callback timeout
+    await query.answer()
 
-    # Get or create user
     user = await user_collection.find_one({"id": user_id})
     if not user:
         user = {"id": user_id, "balance": 0, "last_daily_claim": None, "last_weekly_claim": None}
@@ -86,7 +86,12 @@ async def bonus_handler(_, query: CallbackQuery):
     if data == "daily_claim":
         last_daily = user.get("last_daily_claim")
         if last_daily and (now - last_daily) < timedelta(days=1):
-            await query.answer("You already claimed today!", show_alert=True)
+            remaining = timedelta(days=1) - (now - last_daily)
+            h, rem = divmod(int(remaining.total_seconds()), 3600)
+            m, _ = divmod(rem, 60)
+            await query.message.reply_text(
+                f"⏳ You already claimed today!\nNext Daily available in {h}h {m}m ⌛"
+            )
         else:
             await user_collection.update_one(
                 {"id": user_id},
@@ -101,7 +106,7 @@ async def bonus_handler(_, query: CallbackQuery):
                 f"💰 +{DAILY_COINS} Coins\n💎 Total Balance: {balance}"
             )
 
-        # Update buttons (CLAIMED)
+        # Update keyboard (CLAIMED)
         new_keyboard = await build_bonus_keyboard(user_id)
         await query.message.edit_reply_markup(reply_markup=new_keyboard)
         return
@@ -110,7 +115,12 @@ async def bonus_handler(_, query: CallbackQuery):
     if data == "weekly_claim":
         last_weekly = user.get("last_weekly_claim")
         if last_weekly and (now - last_weekly) < timedelta(weeks=1):
-            await query.answer("You already claimed weekly bonus!", show_alert=True)
+            remaining = timedelta(weeks=1) - (now - last_weekly)
+            d, rem = divmod(int(remaining.total_seconds()), 86400)
+            h, _ = divmod(rem, 3600)
+            await query.message.reply_text(
+                f"⏳ You already claimed this week!\nNext Weekly available in {d}d {h}h ⌛"
+            )
         else:
             await user_collection.update_one(
                 {"id": user_id},
@@ -125,7 +135,7 @@ async def bonus_handler(_, query: CallbackQuery):
                 f"💰 +{WEEKLY_COINS} Coins\n💎 Total Balance: {balance}"
             )
 
-        # Update buttons (CLAIMED)
+        # Update keyboard (CLAIMED)
         new_keyboard = await build_bonus_keyboard(user_id)
         await query.message.edit_reply_markup(reply_markup=new_keyboard)
         return
@@ -134,10 +144,10 @@ async def bonus_handler(_, query: CallbackQuery):
     if data == "close_bonus":
         try:
             await query.message.delete()
-            await query.answer("Closed", show_alert=False)
         except:
-            await query.answer("Already closed", show_alert=False)
+            pass
+        await query.answer("Closed", show_alert=False)
         return
 
 
-print("✅ Bonus system with status buttons loaded successfully.")
+print("✅ Bonus system with CLAIMED buttons & cooldown info loaded successfully.")
