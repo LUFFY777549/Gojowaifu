@@ -1,153 +1,116 @@
-import asyncio
-from datetime import datetime, timedelta
-from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
-from TEAMZYRO import ZYRO as bot, user_collection
+from pyrogram import filters, enums
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+import random, asyncio, html
+from TEAMZYRO import app, user_collection, top_global_groups_collection
 
-DAILY_COINS = 100
-WEEKLY_COINS = 1500
+PHOTO_URL = ["https://files.catbox.moe/9bhirj.jpg"]
 
 
-# ---------------- HELPER: BUTTON BUILDER ---------------- #
-async def build_bonus_keyboard(user_id: int):
-    user = await user_collection.find_one({"id": user_id})
-    now = datetime.utcnow()
-    daily_status = "AVAILABLE"
-    weekly_status = "AVAILABLE"
+# ---------------- HELPERS ---------------- #
+def build_user_leaderboard(data):
+    caption = "<b>🏆 TOP 10 USERS WITH MOST CHARACTERS 🏆</b>\n\n"
+    for i, user in enumerate(data, start=1):
+        user_id = user.get("id", "Unknown")
+        first_name = html.escape(user.get("first_name", "Unknown"))
+        if len(first_name) > 15:
+            first_name = first_name[:15] + "..."
+        count = len(user.get("characters", []))
+        caption += f"{i}. <a href='tg://user?id={user_id}'><b>{first_name}</b></a> ➾ <b>{count}</b>\n"
+    return caption
 
-    if user:
-        last_daily = user.get("last_daily_claim")
-        last_weekly = user.get("last_weekly_claim")
 
-        if last_daily and (now - last_daily) < timedelta(days=1):
-            daily_status = "CLAIMED"
-        if last_weekly and (now - last_weekly) < timedelta(weeks=1):
-            weekly_status = "CLAIMED"
+def build_group_leaderboard(data):
+    caption = "<b>👥 TOP 10 GROUPS WHO GUESSED MOST CHARACTERS 👥</b>\n\n"
+    for i, group in enumerate(data, start=1):
+        name = html.escape(group.get("group_name", "Unknown"))
+        if len(name) > 15:
+            name = name[:15] + "..."
+        count = group.get("count", 0)
+        caption += f"{i}. <b>{name}</b> ➾ <b>{count}</b>\n"
+    return caption
 
+
+def build_coin_leaderboard(data):
+    caption = "<b>💰 TOP 10 USERS WITH MOST COINS 💰</b>\n\n"
+    for i, user in enumerate(data, start=1):
+        user_id = user.get("id", "Unknown")
+        name = html.escape(user.get("first_name", "Unknown"))
+        if len(name) > 15:
+            name = name[:15] + "..."
+        coins = user.get("coins", 0)
+        caption += f"{i}. <a href='tg://user?id={user_id}'><b>{name}</b></a> ➾ <b>{coins}</b>\n"
+    return caption
+
+
+def get_buttons(active):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(f"🎁 Daily ({daily_status})", callback_data="daily_claim")],
-        [InlineKeyboardButton(f"📅 Weekly ({weekly_status})", callback_data="weekly_claim")],
-        [InlineKeyboardButton("❌ Close", callback_data="close_bonus")]
+        [
+            InlineKeyboardButton("🏆 Top" if active == "top" else "Top", callback_data="rank_top"),
+            InlineKeyboardButton("👥 Top Groups" if active == "group" else "Top Groups", callback_data="rank_group"),
+        ],
+        [
+            InlineKeyboardButton("💰 Coin Top" if active == "coin" else "Coin Top", callback_data="rank_coin")
+        ]
     ])
 
 
-# ---------------- COMMAND: /bonus ---------------- #
-@bot.on_message(filters.command("bonus"))
-async def bonus_menu(_, message: Message):
-    user_id = message.from_user.id
-    user = await user_collection.find_one({"id": user_id})
+# ---------------- /rank COMMAND ---------------- #
+@app.on_message(filters.command("rank"))
+async def rank_cmd(client, message):
+    data = await user_collection.find({}, {"_id": 0, "id": 1, "first_name": 1, "characters": 1}).to_list(None)
+    data.sort(key=lambda x: len(x.get("characters", [])), reverse=True)
+    caption = build_user_leaderboard(data[:10])
 
-    now = datetime.utcnow()
-    daily_info = "✅ Available now!"
-    weekly_info = "✅ Available now!"
-
-    if user:
-        last_daily = user.get("last_daily_claim")
-        last_weekly = user.get("last_weekly_claim")
-
-        if last_daily and (now - last_daily) < timedelta(days=1):
-            remaining = timedelta(days=1) - (now - last_daily)
-            h, rem = divmod(int(remaining.total_seconds()), 3600)
-            m, _ = divmod(rem, 60)
-            daily_info = f"⏳ Next in {h}h {m}m"
-
-        if last_weekly and (now - last_weekly) < timedelta(weeks=1):
-            remaining = timedelta(weeks=1) - (now - last_weekly)
-            d, rem = divmod(int(remaining.total_seconds()), 86400)
-            h, _ = divmod(rem, 3600)
-            weekly_info = f"⏳ Next in {d}d {h}h"
-
-    keyboard = await build_bonus_keyboard(user_id)
-    await message.reply_text(
-        f"✨ **BONUS MENU** ✨\n\n"
-        f"🎁 Daily Bonus: {daily_info}\n"
-        f"📅 Weekly Bonus: {weekly_info}\n\n"
-        f"Choose one of the options below 👇",
-        reply_markup=keyboard
+    await message.reply_photo(
+        random.choice(PHOTO_URL),
+        caption=caption,
+        reply_markup=get_buttons("top"),
+        parse_mode=enums.ParseMode.HTML
     )
 
 
-# ---------------- CALLBACK HANDLER ---------------- #
-@bot.on_callback_query(filters.regex("^(daily_claim|weekly_claim|close_bonus)$"))
-async def bonus_handler(_, query: CallbackQuery):
-    user_id = query.from_user.id
-    data = query.data
-    now = datetime.utcnow()
+# ---------------- CALLBACK HANDLERS ---------------- #
+@app.on_callback_query(filters.regex("^rank_top$"))
+async def rank_top_cb(_, query):
+    await query.answer("Loading Top Users...")
+    data = await user_collection.find({}, {"_id": 0, "id": 1, "first_name": 1, "characters": 1}).to_list(None)
+    data.sort(key=lambda x: len(x.get("characters", [])), reverse=True)
+    caption = build_user_leaderboard(data[:10])
 
-    # Safe answer to prevent callback timeout
-    await query.answer()
-
-    user = await user_collection.find_one({"id": user_id})
-    if not user:
-        user = {"id": user_id, "balance": 0, "last_daily_claim": None, "last_weekly_claim": None}
-        await user_collection.insert_one(user)
-
-    # ---------------- DAILY CLAIM ---------------- #
-    if data == "daily_claim":
-        last_daily = user.get("last_daily_claim")
-        if last_daily and (now - last_daily) < timedelta(days=1):
-            remaining = timedelta(days=1) - (now - last_daily)
-            h, rem = divmod(int(remaining.total_seconds()), 3600)
-            m, _ = divmod(rem, 60)
-            await query.message.reply_text(
-                f"⏳ You already claimed today!\nNext Daily available in {h}h {m}m ⌛"
-            )
-        else:
-            await user_collection.update_one(
-                {"id": user_id},
-                {"$inc": {"balance": DAILY_COINS}, "$set": {"last_daily_claim": now}},
-                upsert=True
-            )
-            new_user = await user_collection.find_one({"id": user_id})
-            balance = int(new_user.get("balance", 0))
-
-            await query.message.reply_text(
-                f"🎉 **Congratulations!**\nYou claimed your **Daily Bonus!**\n\n"
-                f"💰 +{DAILY_COINS} Coins\n💎 Total Balance: {balance}"
-            )
-
-        # Update keyboard (CLAIMED)
-        new_keyboard = await build_bonus_keyboard(user_id)
-        await query.message.edit_reply_markup(reply_markup=new_keyboard)
-        return
-
-    # ---------------- WEEKLY CLAIM ---------------- #
-    if data == "weekly_claim":
-        last_weekly = user.get("last_weekly_claim")
-        if last_weekly and (now - last_weekly) < timedelta(weeks=1):
-            remaining = timedelta(weeks=1) - (now - last_weekly)
-            d, rem = divmod(int(remaining.total_seconds()), 86400)
-            h, _ = divmod(rem, 3600)
-            await query.message.reply_text(
-                f"⏳ You already claimed this week!\nNext Weekly available in {d}d {h}h ⌛"
-            )
-        else:
-            await user_collection.update_one(
-                {"id": user_id},
-                {"$inc": {"balance": WEEKLY_COINS}, "$set": {"last_weekly_claim": now}},
-                upsert=True
-            )
-            new_user = await user_collection.find_one({"id": user_id})
-            balance = int(new_user.get("balance", 0))
-
-            await query.message.reply_text(
-                f"🎉 **Congratulations!**\nYou claimed your **Weekly Bonus!**\n\n"
-                f"💰 +{WEEKLY_COINS} Coins\n💎 Total Balance: {balance}"
-            )
-
-        # Update keyboard (CLAIMED)
-        new_keyboard = await build_bonus_keyboard(user_id)
-        await query.message.edit_reply_markup(reply_markup=new_keyboard)
-        return
-
-    # ---------------- CLOSE ---------------- #
-    if data == "close_bonus":
-        try:
-            await query.message.delete()
-        except:
-            pass
-        await query.answer("Closed", show_alert=False)
-        return
+    try:
+        await query.message.edit_caption(caption=caption, reply_markup=get_buttons("top"), parse_mode=enums.ParseMode.HTML)
+    except Exception:
+        await query.message.reply_text(caption)
 
 
-print("✅ Bonus system with CLAIMED buttons & cooldown info loaded successfully.")
+@app.on_callback_query(filters.regex("^rank_group$"))
+async def rank_group_cb(_, query):
+    await query.answer("Loading Top Groups...")
+    cursor = top_global_groups_collection.aggregate([
+        {"$project": {"group_name": 1, "count": 1}},
+        {"$sort": {"count": -1}},
+        {"$limit": 10},
+    ])
+    data = await cursor.to_list(length=10)
+    caption = build_group_leaderboard(data)
+
+    try:
+        await query.message.edit_caption(caption=caption, reply_markup=get_buttons("group"), parse_mode=enums.ParseMode.HTML)
+    except Exception:
+        await query.message.reply_text(caption)
+
+
+@app.on_callback_query(filters.regex("^rank_coin$"))
+async def rank_coin_cb(_, query):
+    await query.answer("Loading Top Coins...")
+    data = await user_collection.find({}, {"_id": 0, "id": 1, "first_name": 1, "coins": 1}).to_list(None)
+    data.sort(key=lambda x: x.get("coins", 0), reverse=True)
+    caption = build_coin_leaderboard(data[:10])
+
+    try:
+        await query.message.edit_caption(caption=caption, reply_markup=get_buttons("coin"), parse_mode=enums.ParseMode.HTML)
+    except Exception:
+        await query.message.reply_text(caption)
+
+
+print("✅ /rank command with working callbacks loaded successfully!")
