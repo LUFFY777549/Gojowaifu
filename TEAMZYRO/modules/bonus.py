@@ -1,7 +1,7 @@
-from pyrogram import Client, filters
+from TEAMZYRO import *
+from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from datetime import datetime, timedelta
-from TEAMZYRO import user_collection  # ← direct import from TEAMZYRO/__init__.py
+from datetime import datetime
 
 DAILY_REWARD = 100
 WEEKLY_REWARD = 500
@@ -46,18 +46,18 @@ async def add_balance(user_id: int, amount: int):
 
 
 # -------------------------- BONUS COMMAND ----------------------------- #
-@Client.on_message(filters.command("bonus"))
+@app.on_message(filters.command("bonus"))
 async def bonus_handler(client, message):
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🌻 Daily Bonus", callback_data="daily_bonus")],
         [InlineKeyboardButton("📅 Weekly Bonus", callback_data="weekly_bonus")],
         [InlineKeyboardButton("❌ Close", callback_data="bonus_close")]
     ])
-    await message.reply("🎁 Choose your bonus:", reply_markup=keyboard)
+    await message.reply_text("🎁 Choose your bonus:", reply_markup=keyboard)
 
 
 # -------------------------- CALLBACK HANDLER -------------------------- #
-@Client.on_callback_query(filters.regex("^(daily_bonus|weekly_bonus|bonus_close)$"))
+@app.on_callback_query(filters.regex("^(daily_bonus|weekly_bonus|bonus_close)$"))
 async def bonus_callback(client, callback: CallbackQuery):
     user_id = callback.from_user.id
     data = callback.data
