@@ -87,16 +87,15 @@ async def edit_leaderboard(callback_query, caption, active_tab):
             reply_markup=get_buttons(active_tab)
         )
     except Exception as e:
-        # Agar same caption hai toh error ignore
-        if "message is not modified" in str(e):
-            await callback_query.answer("Already showing this page!", show_alert=False)
+        if "message is not modified" in str(e).lower():
+            await callback_query.answer("Already showing this!", show_alert=False)
         else:
-            await callback_query.answer("❌ Failed to update.", show_alert=True)
+            await callback_query.answer(f"⚠️ {str(e)[:100]}", show_alert=True)
 
 
 @app.on_callback_query(filters.regex("^top$"))
 async def top_callback(client, callback_query):
-    await callback_query.answer()  # quick response to prevent timeout
+    await callback_query.answer("⏳ Loading leaderboard...", show_alert=False)
     await asyncio.sleep(0.2)
 
     cursor = user_collection.find({}, {"_id": 0, "id": 1, "first_name": 1, "characters": 1})
@@ -110,7 +109,7 @@ async def top_callback(client, callback_query):
 
 @app.on_callback_query(filters.regex("^top_group$"))
 async def top_group_callback(client, callback_query):
-    await callback_query.answer()
+    await callback_query.answer("⏳ Loading top groups...", show_alert=False)
     await asyncio.sleep(0.2)
 
     cursor = top_global_groups_collection.aggregate([
@@ -126,7 +125,7 @@ async def top_group_callback(client, callback_query):
 
 @app.on_callback_query(filters.regex("^mtop$"))
 async def mtop_callback(client, callback_query):
-    await callback_query.answer()
+    await callback_query.answer("⏳ Loading coin leaderboard...", show_alert=False)
     await asyncio.sleep(0.2)
 
     cursor = user_collection.find({}, {"_id": 0, "id": 1, "first_name": 1, "coins": 1})
