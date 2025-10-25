@@ -7,17 +7,17 @@ GACHA_COST = 1000  # Minimum coins per summon
 
 # Rarity chances (in %)
 RARITY_CHANCES = {
-    "Common": 60,
-    "Rare": 25,
-    "Epic": 10,
-    "Legendary": 5,
+    "Low": 60,
+    "Medium": 25,
+    "High": 10,
+    "Special Edition": 5,
 }
 
 RARITY_EMOJIS = {
-    "Common": "⚪",
-    "Rare": "🔵",
-    "Epic": "🟣",
-    "Legendary": "🟡",
+    "Low": "⚪",
+    "Medium": "🟠",
+    "High": "🔴",
+    "Special Edition": "🎩",
 }
 
 # ---------------------------- HELPERS -----------------------------
