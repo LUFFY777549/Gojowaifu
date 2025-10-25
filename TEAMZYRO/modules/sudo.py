@@ -1,159 +1,207 @@
-import asyncio
-from datetime import datetime, timedelta
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
-from TEAMZYRO import ZYRO as bot, user_collection
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
+from pymongo import MongoClient
 
-DAILY_COINS = 100
-WEEKLY_COINS = 1500
+from TEAMZYRO import OWNER_ID
+
+from TEAMZYRO import app, db, require_power
+from functools import wraps
+
+sudo_users = db['sudo_users']
+
+# Predefined powers
+ALL_POWERS = [
+    "add_character",  # Adds a new character
+    "delete_character",  # Deletes a character
+    "update_character",  # Updates an existing character
+    "approve_request",  # Approves a request
+    "approve_inventory_request",  # Approves an inventory request
+    "VIP"
+]
+
+# Command: /addsudo
+@app.on_message(filters.command("saddsudo") & filters.reply)
+@require_power("VIP")
+async def add_sudo(client, message):
+
+    replied_user_id = message.reply_to_message.from_user.id
+
+    # Check if the user is already a sudo
+    existing_user = await sudo_users.find_one({"_id": replied_user_id})
+    if existing_user:
+        await message.reply_text(f"User `{replied_user_id}` is already a sudo.")
+        return
+
+    # Add the user as a sudo
+    sudo_users.update_one(
+        {"_id": replied_user_id},
+        {"$set": {"powers": {"add_character": True}}},  # Only giving the 'add_character' power
+        upsert=True
+    )
+    await message.reply_text(f"User `{replied_user_id}` has been added as a sudo with 'add_character' power.")
+
+@app.on_message(filters.command("sremovesudo"))
+@require_power("VIP")
+async def remove_sudo(client, message):
+    # Get user ID from reply or command argument
+    if message.reply_to_message:
+        user_id = message.reply_to_message.from_user.id
+    elif len(message.command) > 1 and message.command[1].isdigit():
+        user_id = int(message.command[1])
+    else:
+        await message.reply_text("❌ Please reply to a user or provide a valid user ID.")
+        return
+
+    # Check if the user is a sudo
+    existing_user = await sudo_users.find_one({"_id": user_id})
+    if not existing_user:
+        await message.reply_text(f"⚠️ User `{user_id}` is not a sudo.")
+        return
+
+    # Remove the user from sudo
+    await sudo_users.delete_one({"_id": user_id})
+    await message.reply_text(f"✅ User [{user_id}](tg://user?id={user_id}) has been removed from sudo.", disable_web_page_preview=True)
 
 
-# ---------------- HELPER: BUTTON BUILDER ---------------- #
-async def build_bonus_keyboard(user_id: int):
-    user = await user_collection.find_one({"id": user_id})
-    now = datetime.utcnow()
-    daily_status = "AVAILABLE"
-    weekly_status = "AVAILABLE"
+# Command: /editsudo
+@app.on_message(filters.command("seditsudo") & filters.reply)
+@require_power("VIP")
+async def edit_sudo(client, message):
 
-    if user:
-        last_daily = user.get("last_daily_claim")
-        last_weekly = user.get("last_weekly_claim")
+    replied_user_id = message.reply_to_message.from_user.id
+    user_data = await sudo_users.find_one({"_id": replied_user_id})
 
-        if last_daily and (now - last_daily) < timedelta(days=1):
-            daily_status = "CLAIMED"
-        if last_weekly and (now - last_weekly) < timedelta(weeks=1):
-            weekly_status = "CLAIMED"
+    if not user_data:
+        await message.reply_text("This user is not a sudo.")
+        return
 
-    buttons = [
-        [InlineKeyboardButton(f"🎁 Daily ({daily_status})", callback_data="daily_claim")],
-        [InlineKeyboardButton(f"📅 Weekly ({weekly_status})", callback_data="weekly_claim")],
-        [InlineKeyboardButton("❌ Close", callback_data="close_bonus")]
-    ]
-    return InlineKeyboardMarkup(buttons)
+    # Generate inline keyboard with "Closed" button
+    buttons = []
+    powers = user_data.get("powers", {})
+    for i, power in enumerate(ALL_POWERS):
+        current_status = "Yes" if powers.get(power, False) else "No"
+        buttons.append([
+            InlineKeyboardButton(f"{power}", callback_data=f"noop"),
+            InlineKeyboardButton(f"{current_status}", callback_data=f"toggle_{replied_user_id}_{power}")
+        ])
 
+    # Add the "Closed" button to close the keyboard
+    buttons.append([InlineKeyboardButton("Closed", callback_data="close_keyboard")])
 
-# ---------------- COMMAND: /bonus ---------------- #
-@bot.on_message(filters.command("bonus"))
-async def bonus_menu(_, message: Message):
-    user_id = message.from_user.id
-    user = await user_collection.find_one({"id": user_id})
+    keyboard = InlineKeyboardMarkup(buttons)
 
-    now = datetime.utcnow()
-    daily_info = "✅ Available now!"
-    weekly_info = "✅ Available now!"
+    await message.reply_text(f"Edit powers for `{replied_user_id}`:", reply_markup=keyboard)
 
-    if user:
-        last_daily = user.get("last_daily_claim")
-        last_weekly = user.get("last_weekly_claim")
+# Callback handler for toggling powers
+@app.on_callback_query(filters.regex(r"^toggle_(\d+)_(\w+)$"))
+@require_power("VIP")
+async def toggle_power(client, callback_query):
 
-        if last_daily and (now - last_daily) < timedelta(days=1):
-            remaining = timedelta(days=1) - (now - last_daily)
-            h, rem = divmod(int(remaining.total_seconds()), 3600)
-            m, _ = divmod(rem, 60)
-            daily_info = f"⏳ Next in {h}h {m}m"
+    user_id = int(callback_query.matches[0].group(1))
+    power = callback_query.matches[0].group(2)
 
-        if last_weekly and (now - last_weekly) < timedelta(weeks=1):
-            remaining = timedelta(weeks=1) - (now - last_weekly)
-            d, rem = divmod(int(remaining.total_seconds()), 86400)
-            h, _ = divmod(rem, 3600)
-            weekly_info = f"⏳ Next in {d}d {h}h"
+    user_data = await sudo_users.find_one({"_id": user_id})
+    if not user_data:
+        await callback_query.answer("User not found.", show_alert=True)
+        return
 
-    keyboard = await build_bonus_keyboard(user_id)
-    await message.reply_text(
-        f"✨ **BONUS MENU** ✨\n\n"
-        f"🎁 Daily Bonus: {daily_info}\n"
-        f"📅 Weekly Bonus: {weekly_info}\n\n"
-        f"Choose one of the options below 👇",
-        reply_markup=keyboard
+    # Toggle the power
+    current_status = user_data.get("powers", {}).get(power, False)
+    new_status = not current_status
+    await sudo_users.update_one(
+        {"_id": user_id},
+        {"$set": {f"powers.{power}": new_status}}
     )
 
+    # Notify the user and update the keyboard
+    await callback_query.answer(f"Power '{power}' updated to {'Yes' if new_status else 'No'}.", show_alert=True)
 
-# ---------------- CALLBACK HANDLER ---------------- #
-@bot.on_callback_query(filters.regex("^(daily_claim|weekly_claim|close_bonus)$"))
-async def bonus_handler(_, query: CallbackQuery):
-    user_id = query.from_user.id
-    data = query.data
-    now = datetime.utcnow()
+    user_data = await sudo_users.find_one({"_id": user_id})  # Fetch updated user data
+    powers = user_data.get("powers", {})
+    buttons = []
+    for p in ALL_POWERS:
+        status = "Yes" if powers.get(p, False) else "No"
+        buttons.append([
+            InlineKeyboardButton(f"{p}", callback_data=f"noop"),
+            InlineKeyboardButton(f"{status}", callback_data=f"toggle_{user_id}_{p}")
+        ])
 
-    # ---- Safe Answer First ---- #
-    await query.answer("Processing...")
+    # Add the "Closed" button again after toggling
+    buttons.append([InlineKeyboardButton("Closed", callback_data="close_keyboard")])
 
-    # Get or create user
-    user = await user_collection.find_one({"id": user_id})
-    if not user:
-        user = {"id": user_id, "balance": 0, "last_daily_claim": None, "last_weekly_claim": None}
-        await user_collection.insert_one(user)
+    keyboard = InlineKeyboardMarkup(buttons)
+    await callback_query.message.edit_reply_markup(reply_markup=keyboard)
 
-    # ---------------- DAILY CLAIM ---------------- #
-    if data == "daily_claim":
-        last_daily = user.get("last_daily_claim")
-        if last_daily and (now - last_daily) < timedelta(days=1):
-            remaining = timedelta(days=1) - (now - last_daily)
-            h, rem = divmod(int(remaining.total_seconds()), 3600)
-            m, _ = divmod(rem, 60)
-            await query.answer(f"⏳ Next daily in {h}h {m}m!", show_alert=True)
-        else:
-            await user_collection.update_one(
-                {"id": user_id},
-                {"$inc": {"balance": DAILY_COINS}, "$set": {"last_daily_claim": now}},
-                upsert=True
-            )
-            new_user = await user_collection.find_one({"id": user_id})
-            balance = int(new_user.get("balance", 0))
+# Callback handler for closing the keyboard
+@app.on_callback_query(filters.regex(r"^close_keyboard$"))
+@require_power("VIP")
+async def close_keyboard(client, callback_query):
+    await callback_query.message.edit_reply_markup(reply_markup=None)
+    await callback_query.answer("Keyboard closed.", show_alert=True)
 
-            await query.message.reply_text(
-                f"🎉 **Congratulations!**\nYou claimed your **Daily Bonus!**\n\n"
-                f"💰 +{DAILY_COINS} Coins\n💎 Total Balance: {balance}"
-            )
-            await query.answer("Daily claimed successfully!", show_alert=True)
+def require_power(required_power):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(client, message, *args, **kwargs):
+            # Check if the message is a callback query or a regular message
+            if isinstance(message, CallbackQuery):
+                # This is a callback query, not a regular message
+                user_id = message.from_user.id
+                # If the user is the owner, bypass the power check
+                if user_id == OWNER_ID:
+                    return await func(client, message, *args, **kwargs)
 
-        # Update keyboard (CLAIMED)
-        new_keyboard = await build_bonus_keyboard(user_id)
-        try:
-            await query.message.edit_reply_markup(reply_markup=new_keyboard)
-        except:
-            pass
+                # Otherwise, check if the user has the required power
+                user_data = await sudo_users.find_one({"_id": user_id})
+                if not user_data or not user_data.get("powers", {}).get(required_power, False):
+                    # Use callback_query.answer for callback queries
+                    await message.answer(f"You do not have the `{required_power}` power required to use this button.", show_alert=True)
+                    return
+                return await func(client, message, *args, **kwargs)
+
+            # Regular message handling
+            user_id = message.from_user.id
+            # If the user is the owner, bypass the power check
+            if user_id == OWNER_ID:
+                return await func(client, message, *args, **kwargs)
+
+            # Otherwise, check if the user has the required power
+            user_data = await sudo_users.find_one({"_id": user_id})
+            if not user_data or not user_data.get("powers", {}).get(required_power, False):
+                # Use message.reply_text for regular messages
+                await message.reply_text(f"You do not have the `{required_power}` power required to use this command.")
+                return
+            return await func(client, message, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+# Command: /sudolist
+@app.on_message(filters.command("sudolist"))
+async def sudo_list(client, message):
+    if message.from_user.id != OWNER_ID:
+        await message.reply_text("You do not have permission to use this command.")
         return
 
-    # ---------------- WEEKLY CLAIM ---------------- #
-    if data == "weekly_claim":
-        last_weekly = user.get("last_weekly_claim")
-        if last_weekly and (now - last_weekly) < timedelta(weeks=1):
-            remaining = timedelta(weeks=1) - (now - last_weekly)
-            d, rem = divmod(int(remaining.total_seconds()), 86400)
-            h, _ = divmod(rem, 3600)
-            await query.answer(f"⏳ Next weekly in {d}d {h}h!", show_alert=True)
-        else:
-            await user_collection.update_one(
-                {"id": user_id},
-                {"$inc": {"balance": WEEKLY_COINS}, "$set": {"last_weekly_claim": now}},
-                upsert=True
-            )
-            new_user = await user_collection.find_one({"id": user_id})
-            balance = int(new_user.get("balance", 0))
+    # Fetch all sudo users from the database
+    users = await sudo_users.find().to_list(length=None)
 
-            await query.message.reply_text(
-                f"🎉 **Congratulations!**\nYou claimed your **Weekly Bonus!**\n\n"
-                f"💰 +{WEEKLY_COINS} Coins\n💎 Total Balance: {balance}"
-            )
-            await query.answer("Weekly claimed successfully!", show_alert=True)
-
-        # Update keyboard (CLAIMED)
-        new_keyboard = await build_bonus_keyboard(user_id)
-        try:
-            await query.message.edit_reply_markup(reply_markup=new_keyboard)
-        except:
-            pass
+    if not users:
+        await message.reply_text("There are no sudo users.")
         return
 
-    # ---------------- CLOSE ---------------- #
-    if data == "close_bonus":
-        await query.answer("Closed!", show_alert=False)
+    sudo_list_text = "🛠 **Sudo Users List:**\n\n"
+    for user in users:
+        user_id = user.get("_id")
+
+        # Fetch user details from Telegram
         try:
-            await query.message.delete()
+            user_info = await client.get_users(user_id)
+            first_name = user_info.first_name
         except:
-            pass
-        return
+            first_name = "Unknown"
 
+        # Show user first name and mention link
+        sudo_list_text += f"➤ [{first_name}](tg://user?id={user_id}) (`{user_id}`)\n"
 
-print("✅ Bonus system fixed — no expired buttons, proper CLAIMED update & cooldown shown.")
+    await message.reply_text(sudo_list_text, disable_web_page_preview=True)
